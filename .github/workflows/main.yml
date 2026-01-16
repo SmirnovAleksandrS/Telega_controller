@@ -43,7 +43,7 @@ jobs:
 
       - name: Smoke-test EXE
         run: |
-          $p = Start-Process dist\serial_plotter.exe -PassThru
+          $p = Start-Process dist\main.exe -PassThru
           Start-Sleep -Seconds 5
           if ($p.HasExited) {
             if ($p.ExitCode -ne 0) {
@@ -56,5 +56,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: serial_plotter-windows
-          path: dist/serial_plotter.exe
+          name: main-windows
+          path: dist/main.exe
