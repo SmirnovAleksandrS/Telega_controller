@@ -1,79 +1,60 @@
-name: Build Windows (PyInstaller)
+name: Build Windows EXE
 
 on:
   push:
-    branches: ["main"]
-    tags: ["v*"]
-  pull_request:
+    branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-env:
-  APP_DIR: virtual_controller
-  APP_NAME: VirtualController
-  PYTHON_VERSION: "3.12"
 
 jobs:
   build-windows:
-    # Сборка именно на твоем Windows сервере (self-hosted runner).
-    # Убедись, что у runner есть labels: self-hosted, windows, x64 (или поправь под свои).
-    runs-on: [self-hosted, windows, x64]
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: |
-            ${{ env.APP_DIR }}/requirements.txt
+          python-version: '3.11'
+
+      - name: Show files and requirements
+        run: |
+          pwd
+          dir
 
       - name: Install dependencies
-        shell: powershell
-        working-directory: ${{ env.APP_DIR }}
         run: |
-          python -m pip install --upgrade pip wheel
-          pip install -r requirements.txt
-          pip install pyinstaller
+          python -m pip install --upgrade pip
+          python -m pip install -r pyserial
+          python -m pip install pyinstaller
+          echo ===== pip show =====
+          python -m pip show pyserial
+          echo ===== pip list =====
+          python -m pip list
 
-      - name: Build (PyInstaller one-dir)
-        shell: powershell
-        working-directory: ${{ env.APP_DIR }}
+      - name: Sanity-check imports
         run: |
-          # Важно: one-dir по умолчанию — это папка dist\<APP_NAME>\ с .exe и всеми DLL/py-файлами.
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --windowed `
-            --name "${env:APP_NAME}" `
-            main.py
+          python -c "import serial, serial.tools.list_ports; print('All imports OK')"
 
-          # Если выяснится, что какие-то модули подтягиваются динамически и не попали в сборку,
-          # добавишь сюда hidden-import/collect, например:
-          # --hidden-import serial.tools.list_ports
-          # --collect-all serial
-
-      - name: Package artifact (zip)
-        shell: powershell
-        working-directory: ${{ env.APP_DIR }}
+      - name: Build with PyInstaller
         run: |
-          $zipName = "${env:APP_NAME}-windows-x64.zip"
-          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          pyinstaller --onefile --windowed --hidden-import serial --hidden-import serial.tools.list_ports main.py
 
-          $distPath = Join-Path "dist" $env:APP_NAME
-          if (!(Test-Path $distPath)) { throw "Build output not found: $distPath" }
-
-          Compress-Archive -Path (Join-Path $distPath '*') -DestinationPath $zipName
-          Write-Host "Created artifact: $zipName"
+      - name: Smoke-test EXE
+        run: |
+          $p = Start-Process dist\serial_plotter.exe -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            if ($p.ExitCode -ne 0) {
+              throw "EXE exited with code $($p.ExitCode)"
+            }
+          } else {
+            Stop-Process -Id $p.Id
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-windows-x64
-          path: ${{ env.APP_DIR }}/${{ env.APP_NAME }}-windows-x64.zip
-          if-no-files-found: error
+          name: serial_plotter-windows
+          path: dist/serial_plotter.exe
