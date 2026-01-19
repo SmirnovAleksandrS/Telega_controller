@@ -231,6 +231,7 @@ class ManualTab(ttk.Frame):
 
         self.log_text = tk.Text(body, height=8, wrap="none")
         self.log_text.pack(side="left", fill="both", expand=True)
+        self.log_text.tag_configure("tx", foreground="#001a66")
         self.log_text.configure(state="disabled")
 
         yscroll = ttk.Scrollbar(body, orient="vertical", command=self.log_text.yview)
@@ -243,9 +244,12 @@ class ManualTab(ttk.Frame):
         self.rpm_canvas = tk.Canvas(frm, height=140, bg=PANEL_BG, highlightthickness=1, highlightbackground="#333333")
         self.rpm_canvas.pack(fill="both", expand=True)
 
-    def append_log_line(self, line: str) -> None:
+    def append_log_line(self, line: str, tag: str | None = None) -> None:
         self.log_text.configure(state="normal")
-        self.log_text.insert("end", line + "\n")
+        if tag:
+            self.log_text.insert("end", line + "\n", (tag,))
+        else:
+            self.log_text.insert("end", line + "\n")
         self._log_lines += 1
         if self._log_lines > self._log_max_lines:
             self.log_text.delete("1.0", "2.0")

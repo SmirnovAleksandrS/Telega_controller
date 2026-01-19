@@ -154,6 +154,7 @@ class VirtualControllerApp:
 
         # Deviation settings button
         ttk.Button(parent, text="Deviation Settings", command=self._open_deviation_settings).pack(fill="x", pady=(14, 0))
+        ttk.Button(parent, text="Time Sync", command=self._begin_initial_sync).pack(fill="x", pady=(8, 0))
 
     def _make_param_row(self, parent: tk.Widget, row: int, name: str, var_l: tk.StringVar, var_r: tk.StringVar) -> None:
         ttk.Label(parent, text=name).grid(row=row, column=0, sticky="w", pady=4)
@@ -254,6 +255,13 @@ class VirtualControllerApp:
 
         pkt = build_control(ts_u32, left_cmd, right_cmd, self._control_duration_ms)
         self.worker.send(pkt)
+        self._log_tx({
+            "type": "C0",
+            "ts_ms": ts_u32,
+            "left_cmd": left_cmd,
+            "right_cmd": right_cmd,
+            "duration_ms": self._control_duration_ms,
+        })
 
     # ---------------- Sync logic ----------------
 
@@ -288,6 +296,11 @@ class VirtualControllerApp:
         t1_u32 = u32(now_ms)
         self._sync_pending[self._sync_seq] = t1_u32
         self.worker.send(build_sync_req(self._sync_seq, t1_u32))
+        self._log_tx({
+            "type": "B0",
+            "seq": self._sync_seq,
+            "t1_pc_ms": t1_u32,
+        })
 
     def _handle_sync_resp(self, resp: SyncResp, pc_rx_ms: int) -> None:
         """
@@ -390,6 +403,23 @@ class VirtualControllerApp:
 
         self._update_mcu_time_label()
         self.root.after(20, self._poll_rx)
+
+    def _log_tx(self, msg: dict) -> None:
+        log_obj = {
+            "pc_tx_ms": now_ms_monotonic(),
+            "direction": "tx",
+            "msg": msg,
+        }
+        try:
+            line = self.logger.format_line(log_obj)
+            print(line, flush=True)
+            msg_type = msg.get("type")
+            if self.manual_tab.should_show_log(msg_type):
+                self.manual_tab.append_log_line(line, tag="tx")
+            if self.logger.is_running:
+                self.logger.write_line(line)
+        except Exception:
+            pass
 
     def _quality_0_10(self) -> int:
         if not self._rx_ok:
