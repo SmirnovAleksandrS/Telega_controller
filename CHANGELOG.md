@@ -37,6 +37,7 @@ Log format: .log (JSON Lines)
 - Display MCU times on separate lines and log rx_time alongside parsed payload timestamps.
 - Add TX status counters and last write info in GUI to confirm serial writes.
 - Remove TX status from GUI after debugging.
+- Persist COM settings, deviation config, and joystick shifts/linear; add quick Connect/Disconnect button.
 
 ## Notes/Ideas
 - F0 payload in PDF lacks seq; implemented best-effort matching to last pending request.

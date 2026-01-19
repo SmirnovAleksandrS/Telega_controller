@@ -13,6 +13,8 @@ from dataclasses import asdict
 import struct
 from typing import Optional, Any
 import collections
+import json
+import os
 
 from app.manual_tab import ManualTab
 from app.dialogs import ComSettingsDialog, DeviationSettingsDialog, DeviationConfig
@@ -43,6 +45,8 @@ class VirtualControllerApp:
         self.logger = ParsedLogger()
 
         self.dev_cfg = DeviationConfig()
+        self._settings_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "app_settings.json"))
+        self._load_settings()
 
         # Time sync state
         self.time_model = TimeModel()
@@ -86,8 +90,9 @@ class VirtualControllerApp:
         self.nb = ttk.Notebook(main)
         self.nb.pack(side="left", fill="both", expand=True)
 
-        self.manual_tab = ManualTab(self.nb, on_control=self._on_manual_control)
+        self.manual_tab = ManualTab(self.nb, on_control=self._on_manual_control, on_coeffs_change=self._on_manual_coeffs)
         self.nb.add(self.manual_tab, text="Manual")
+        self._apply_joystick_settings()
 
         coord_placeholder = ttk.Frame(self.nb)
         ttk.Label(coord_placeholder, text="Coordinate: not implemented yet (per TZ).").pack(padx=20, pady=20)
@@ -119,11 +124,18 @@ class VirtualControllerApp:
         self._log_path: str = ""
 
     def _build_right_panel(self, parent: tk.Widget) -> None:
-        # Status at top right: Log Running / Stopped
+        # Top row: quick connect + log status
+        top = ttk.Frame(parent)
+        top.pack(fill="x")
+
+        self.connect_btn = ttk.Button(top, text="Connect", command=self._toggle_connect)
+        self.connect_btn.pack(side="left")
+
         self.log_status_var = tk.StringVar(value="Log Stopped")
-        self.log_status_lbl = ttk.Label(parent, textvariable=self.log_status_var)
-        self.log_status_lbl.pack(anchor="ne")
+        self.log_status_lbl = ttk.Label(top, textvariable=self.log_status_var)
+        self.log_status_lbl.pack(side="right")
         self._apply_log_status_style()
+        self._refresh_connect_btn()
 
         # Internal references to value labels (to recolor)
         self._value_labels: dict[str, tuple[ttk.Label, ttk.Label]] = {}
@@ -217,8 +229,10 @@ class VirtualControllerApp:
         if dlg.result:
             port, baud = dlg.result
             self.worker.open(port, baud)
+            self._save_settings()
             # Start initial sync when port opens
             self._begin_initial_sync()
+        self._refresh_connect_btn()
 
     def _open_deviation_settings(self) -> None:
         dlg = DeviationSettingsDialog(self.root, self.dev_cfg)
@@ -227,6 +241,7 @@ class VirtualControllerApp:
             self.dev_cfg = dlg.result
             # Refresh coloring with last known values
             self._recolor_all()
+            self._save_settings()
 
     def _on_exit(self) -> None:
         try:
@@ -235,10 +250,41 @@ class VirtualControllerApp:
             self.logger.stop()
             self.root.destroy()
 
+    def _toggle_connect(self) -> None:
+        if self.worker.is_open:
+            self.worker.close()
+            self._refresh_connect_btn()
+            return
+
+        if self.worker.port:
+            self.worker.open(self.worker.port, self.worker.baud)
+            if self.worker.is_open:
+                self._begin_initial_sync()
+            else:
+                messagebox.showerror("COM Settings", "Failed to open port")
+        else:
+            self._open_com_settings()
+        self._refresh_connect_btn()
+
+    def _refresh_connect_btn(self) -> None:
+        if self.worker.is_open:
+            self.connect_btn.configure(text="Disconnect")
+        else:
+            self.connect_btn.configure(text="Connect")
+
     # ---------------- Control logic ----------------
 
     def _on_manual_control(self, left_cmd: int, right_cmd: int) -> None:
         self._last_control = (left_cmd, right_cmd)
+
+    def _on_manual_coeffs(self, left_shift: float, right_shift: float, left_linear: float, right_linear: float) -> None:
+        self._joystick_cfg = {
+            "left_shift": left_shift,
+            "right_shift": right_shift,
+            "left_linear": left_linear,
+            "right_linear": right_linear,
+        }
+        self._save_settings()
 
     def _send_control_if_due(self, now_ms: int) -> None:
         if not self.worker.is_open:
@@ -397,6 +443,82 @@ class VirtualControllerApp:
 
         self._update_mcu_time_label()
         self.root.after(20, self._poll_rx)
+
+    # ---------------- Settings persistence ----------------
+
+    def _load_settings(self) -> None:
+        self._joystick_cfg = {
+            "left_shift": 0.0,
+            "right_shift": 0.0,
+            "left_linear": 1.0,
+            "right_linear": 1.0,
+        }
+        if not os.path.isfile(self._settings_path):
+            return
+        try:
+            with open(self._settings_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except Exception:
+            return
+
+        com = data.get("com", {})
+        self.worker.port = com.get("port", self.worker.port)
+        self.worker.baud = int(com.get("baud", self.worker.baud))
+
+        dev = data.get("deviation", {})
+        try:
+            self.dev_cfg = DeviationConfig(
+                voltage_normal=float(dev.get("voltage_normal", self.dev_cfg.voltage_normal)),
+                voltage_delta=float(dev.get("voltage_delta", self.dev_cfg.voltage_delta)),
+                current_normal=float(dev.get("current_normal", self.dev_cfg.current_normal)),
+                current_delta=float(dev.get("current_delta", self.dev_cfg.current_delta)),
+                temp_normal=float(dev.get("temp_normal", self.dev_cfg.temp_normal)),
+                temp_delta=float(dev.get("temp_delta", self.dev_cfg.temp_delta)),
+            )
+        except Exception:
+            pass
+
+        joy = data.get("joystick", {})
+        self._joystick_cfg = {
+            "left_shift": float(joy.get("left_shift", self._joystick_cfg["left_shift"])),
+            "right_shift": float(joy.get("right_shift", self._joystick_cfg["right_shift"])),
+            "left_linear": float(joy.get("left_linear", self._joystick_cfg["left_linear"])),
+            "right_linear": float(joy.get("right_linear", self._joystick_cfg["right_linear"])),
+        }
+
+    def _apply_joystick_settings(self) -> None:
+        if not hasattr(self, "_joystick_cfg"):
+            return
+        self.manual_tab.set_coeffs(
+            self._joystick_cfg["left_shift"],
+            self._joystick_cfg["right_shift"],
+            self._joystick_cfg["left_linear"],
+            self._joystick_cfg["right_linear"],
+        )
+
+    def _save_settings(self) -> None:
+        data = {
+            "com": {"port": self.worker.port, "baud": self.worker.baud},
+            "deviation": {
+                "voltage_normal": self.dev_cfg.voltage_normal,
+                "voltage_delta": self.dev_cfg.voltage_delta,
+                "current_normal": self.dev_cfg.current_normal,
+                "current_delta": self.dev_cfg.current_delta,
+                "temp_normal": self.dev_cfg.temp_normal,
+                "temp_delta": self.dev_cfg.temp_delta,
+            },
+            "joystick": {
+                "left_shift": self._joystick_cfg["left_shift"],
+                "right_shift": self._joystick_cfg["right_shift"],
+                "left_linear": self._joystick_cfg["left_linear"],
+                "right_linear": self._joystick_cfg["right_linear"],
+            },
+        }
+        try:
+            with open(self._settings_path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     def _log_tx_msg(self, msg: dict) -> None:
         log_obj = {

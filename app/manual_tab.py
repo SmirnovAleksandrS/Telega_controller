@@ -27,9 +27,15 @@ class ManualControlState:
     right_linear: float = 1.0
 
 class ManualTab(ttk.Frame):
-    def __init__(self, master: tk.Widget, on_control: Callable[[int, int], None]) -> None:
+    def __init__(
+        self,
+        master: tk.Widget,
+        on_control: Callable[[int, int], None],
+        on_coeffs_change: Callable[[float, float, float, float], None] | None = None,
+    ) -> None:
         super().__init__(master)
         self.on_control = on_control
+        self.on_coeffs_change = on_coeffs_change
         self.state = ManualControlState()
 
         self._neutral = 1500
@@ -133,6 +139,13 @@ class ManualTab(ttk.Frame):
         self.state.right_shift = f(self.right_shift_var, 0.0)
         self.state.left_linear = f(self.left_linear_var, 1.0)
         self.state.right_linear = f(self.right_linear_var, 1.0)
+        if self.on_coeffs_change:
+            self.on_coeffs_change(
+                self.state.left_shift,
+                self.state.right_shift,
+                self.state.left_linear,
+                self.state.right_linear,
+            )
 
     def _on_press(self, e: tk.Event) -> None:
         self._dragging = True
@@ -385,6 +398,21 @@ class ManualTab(ttk.Frame):
         # Always update graph from joystick commands even without MCU data.
         self.update_rpm(self._last_rpm[0], self._last_rpm[1])
         self.after(self._rpm_tick_ms, self._rpm_tick)
+
+    def set_coeffs(self, left_shift: float, right_shift: float, left_linear: float, right_linear: float) -> None:
+        self.left_shift_var.set(str(left_shift))
+        self.right_shift_var.set(str(right_shift))
+        self.left_linear_var.set(str(left_linear))
+        self.right_linear_var.set(str(right_linear))
+
+    def get_coeffs(self) -> tuple[float, float, float, float]:
+        self._read_coeffs()
+        return (
+            self.state.left_shift,
+            self.state.right_shift,
+            self.state.left_linear,
+            self.state.right_linear,
+        )
 
 
 class _MenuTooltip:
