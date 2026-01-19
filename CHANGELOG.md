@@ -28,6 +28,7 @@ Log format: .log (JSON Lines)
 - Add bottom Log/RPM tabs, move joystick to make room, and stream parsed logs to UI + console.
 - Redraw RPM graph on a timer using joystick commands even without MCU data.
 - Add log filter dropdown with checkboxes grouped by message type and hover tooltips; filtering affects UI only.
+- Keep RPM graph values steady between new data points by reusing last samples.
 
 ## Notes/Ideas
 - F0 payload in PDF lacks seq; implemented best-effort matching to last pending request.

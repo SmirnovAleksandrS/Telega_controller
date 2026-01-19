@@ -41,6 +41,7 @@ class ManualTab(ttk.Frame):
         self._log_lines = 0
         self._rpm_samples = collections.deque(maxlen=200)
         self._last_cmd = (self._neutral, self._neutral)
+        self._last_rpm = (0, 0)
         self._rpm_tick_ms = 200
         self._log_filters: dict[str, tk.BooleanVar] = {}
         self._filter_desc: dict[str, str] = {}
@@ -311,6 +312,7 @@ class ManualTab(ttk.Frame):
             self._menu_tooltip.hide()
 
     def update_rpm(self, left_rpm: int, right_rpm: int) -> None:
+        self._last_rpm = (left_rpm, right_rpm)
         left_cmd, right_cmd = self._last_cmd
         cmd_l_scaled = (left_cmd - self._neutral) / 10.0
         cmd_r_scaled = (right_cmd - self._neutral) / 10.0
@@ -375,7 +377,7 @@ class ManualTab(ttk.Frame):
 
     def _rpm_tick(self) -> None:
         # Always update graph from joystick commands even without MCU data.
-        self.update_rpm(0, 0)
+        self.update_rpm(self._last_rpm[0], self._last_rpm[1])
         self.after(self._rpm_tick_ms, self._rpm_tick)
 
 
