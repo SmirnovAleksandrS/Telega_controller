@@ -27,6 +27,7 @@ Log format: .log (JSON Lines)
 - Update manual joystick math to center at 1500 with range 1000..2000, applying shift add and linear multiplier.
 - Add bottom Log/RPM tabs, move joystick to make room, and stream parsed logs to UI + console.
 - Redraw RPM graph on a timer using joystick commands even without MCU data.
+- Add log filter dropdown with checkboxes grouped by message type and hover tooltips; filtering affects UI only.
 
 ## Notes/Ideas
 - F0 payload in PDF lacks seq; implemented best-effort matching to last pending request.

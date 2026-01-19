@@ -361,7 +361,12 @@ class VirtualControllerApp:
                 try:
                     line = self.logger.format_line(log_obj)
                     print(line, flush=True)
-                    self.manual_tab.append_log_line(line)
+                    msg_type = None
+                    msg = log_obj.get("msg")
+                    if isinstance(msg, dict):
+                        msg_type = msg.get("type")
+                    if self.manual_tab.should_show_log(msg_type):
+                        self.manual_tab.append_log_line(line)
                     if self.logger.is_running:
                         self.logger.write_line(line)
                 except Exception:

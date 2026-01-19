@@ -42,6 +42,9 @@ class ManualTab(ttk.Frame):
         self._rpm_samples = collections.deque(maxlen=200)
         self._last_cmd = (self._neutral, self._neutral)
         self._rpm_tick_ms = 200
+        self._log_filters: dict[str, tk.BooleanVar] = {}
+        self._filter_desc: dict[str, str] = {}
+        self._menu_tooltip: _MenuTooltip | None = None
 
         # Layout: big left area + right panel will be outside in main window
         # Here we only implement left manual control section.
@@ -215,11 +218,21 @@ class ManualTab(ttk.Frame):
         frm = ttk.Frame(self.bottom_nb, padding=6)
         self.bottom_nb.add(frm, text="Log")
 
-        self.log_text = tk.Text(frm, height=8, wrap="none")
+        topbar = ttk.Frame(frm)
+        topbar.pack(fill="x", pady=(0, 6))
+
+        self._filter_btn = ttk.Menubutton(topbar, text="Log Filters", direction="below")
+        self._filter_btn.pack(side="left")
+        self._build_log_filters(self._filter_btn)
+
+        body = ttk.Frame(frm)
+        body.pack(fill="both", expand=True)
+
+        self.log_text = tk.Text(body, height=8, wrap="none")
         self.log_text.pack(side="left", fill="both", expand=True)
         self.log_text.configure(state="disabled")
 
-        yscroll = ttk.Scrollbar(frm, orient="vertical", command=self.log_text.yview)
+        yscroll = ttk.Scrollbar(body, orient="vertical", command=self.log_text.yview)
         yscroll.pack(side="right", fill="y")
         self.log_text.configure(yscrollcommand=yscroll.set)
 
@@ -238,6 +251,64 @@ class ManualTab(ttk.Frame):
             self._log_lines -= 1
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+
+    def should_show_log(self, msg_type: str | None) -> bool:
+        if not msg_type:
+            return True
+        var = self._log_filters.get(msg_type)
+        return True if var is None else bool(var.get())
+
+    def _build_log_filters(self, btn: ttk.Menubutton) -> None:
+        menu = tk.Menu(btn, tearoff=0)
+        btn["menu"] = menu
+
+        def add_group(label: str, items: list[tuple[str, str]]) -> None:
+            sub = tk.Menu(menu, tearoff=0)
+            menu.add_cascade(label=label, menu=sub)
+            for msg_type, desc in items:
+                var = tk.BooleanVar(value=True)
+                self._log_filters[msg_type] = var
+                self._filter_desc[msg_type] = desc
+                sub.add_checkbutton(label=msg_type, variable=var)
+            sub.bind("<<MenuSelect>>", self._on_filter_menu_select)
+            sub.bind("<Unmap>", self._on_filter_menu_unmap)
+
+        add_group("A: Admin", [("A0", "A0 - disable D messages"), ("A1", "A1 - enable D messages")])
+        add_group("B: Requests", [("B0", "B0 - sync request")])
+        add_group("C: Control", [("C0", "C0 - control command")])
+        add_group("D: Data", [
+            ("D0", "D0 - IMU data"),
+            ("D1", "D1 - tacho RPM"),
+            ("D2", "D2 - motor currents/voltage/temp"),
+        ])
+        add_group("E: Errors", [("E0", "E0 - error code")])
+        add_group("F: Responses", [("F0", "F0 - sync response")])
+        add_group("Other", [("unknown", "unknown - unparsed frame")])
+
+        self._menu_tooltip = _MenuTooltip(btn)
+        menu.bind("<<MenuSelect>>", self._on_filter_menu_select)
+        menu.bind("<Unmap>", self._on_filter_menu_unmap)
+
+    def _on_filter_menu_select(self, event: tk.Event) -> None:
+        if self._menu_tooltip is None:
+            return
+        menu = event.widget
+        idx = menu.index("active")
+        if idx is None:
+            self._menu_tooltip.hide()
+            return
+        label = menu.entrycget(idx, "label")
+        desc = self._filter_desc.get(label)
+        if not desc:
+            self._menu_tooltip.hide()
+            return
+        x = self.winfo_pointerx() + 12
+        y = self.winfo_pointery() + 12
+        self._menu_tooltip.show(desc, x, y)
+
+    def _on_filter_menu_unmap(self, _event: tk.Event) -> None:
+        if self._menu_tooltip is not None:
+            self._menu_tooltip.hide()
 
     def update_rpm(self, left_rpm: int, right_rpm: int) -> None:
         left_cmd, right_cmd = self._last_cmd
@@ -306,3 +377,26 @@ class ManualTab(ttk.Frame):
         # Always update graph from joystick commands even without MCU data.
         self.update_rpm(0, 0)
         self.after(self._rpm_tick_ms, self._rpm_tick)
+
+
+class _MenuTooltip:
+    def __init__(self, master: tk.Widget) -> None:
+        self.master = master
+        self._tip: tk.Toplevel | None = None
+        self._label: tk.Label | None = None
+
+    def show(self, text: str, x: int, y: int) -> None:
+        if self._tip is None:
+            self._tip = tk.Toplevel(self.master)
+            self._tip.wm_overrideredirect(True)
+            self._tip.attributes("-topmost", True)
+            self._label = tk.Label(self._tip, text="", bg="#ffffe0", relief="solid", borderwidth=1)
+            self._label.pack(ipadx=4, ipady=2)
+        assert self._label is not None
+        self._label.configure(text=text)
+        self._tip.geometry(f"+{x}+{y}")
+        self._tip.deiconify()
+
+    def hide(self) -> None:
+        if self._tip is not None:
+            self._tip.withdraw()

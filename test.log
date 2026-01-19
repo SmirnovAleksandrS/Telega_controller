@@ -1,0 +1,327 @@
+{"_type": "log_start", "unix_time": 1768809918.6900353}
+{"pc_rx_ms": 64620954, "msg": {"type": "D0", "ts_ms": 165450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621004, "msg": {"type": "D0", "ts_ms": 165500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621004, "msg": {"type": "D1", "ts_ms": 165504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621055, "msg": {"type": "D0", "ts_ms": 165550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621105, "msg": {"type": "D0", "ts_ms": 165600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621105, "msg": {"type": "D1", "ts_ms": 165604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621105, "msg": {"type": "D2", "ts_ms": 165606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621155, "msg": {"type": "D0", "ts_ms": 165650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621205, "msg": {"type": "D0", "ts_ms": 165700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621205, "msg": {"type": "D1", "ts_ms": 165704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621256, "msg": {"type": "D0", "ts_ms": 165750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621306, "msg": {"type": "D0", "ts_ms": 165800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621306, "msg": {"type": "D1", "ts_ms": 165804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621306, "msg": {"type": "D2", "ts_ms": 165806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621356, "msg": {"type": "D0", "ts_ms": 165850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621407, "msg": {"type": "D0", "ts_ms": 165900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621457, "msg": {"type": "D1", "ts_ms": 165904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621508, "msg": {"type": "D0", "ts_ms": 165950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621558, "msg": {"type": "D0", "ts_ms": 166000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621558, "msg": {"type": "D1", "ts_ms": 166004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621558, "msg": {"type": "D2", "ts_ms": 166006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621608, "msg": {"type": "D0", "ts_ms": 166050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621659, "msg": {"type": "D0", "ts_ms": 166100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621659, "msg": {"type": "D1", "ts_ms": 166104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621709, "msg": {"type": "D0", "ts_ms": 166150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621760, "msg": {"type": "D0", "ts_ms": 166200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621760, "msg": {"type": "D1", "ts_ms": 166204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621760, "msg": {"type": "D2", "ts_ms": 166206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621810, "msg": {"type": "D0", "ts_ms": 166250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621860, "msg": {"type": "D0", "ts_ms": 166300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621860, "msg": {"type": "D1", "ts_ms": 166304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621911, "msg": {"type": "D0", "ts_ms": 166350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621961, "msg": {"type": "D0", "ts_ms": 166400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621961, "msg": {"type": "D1", "ts_ms": 166404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64621961, "msg": {"type": "D2", "ts_ms": 166406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622011, "msg": {"type": "D0", "ts_ms": 166450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622062, "msg": {"type": "D0", "ts_ms": 166500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622062, "msg": {"type": "D1", "ts_ms": 166504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622112, "msg": {"type": "D0", "ts_ms": 166550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622162, "msg": {"type": "D0", "ts_ms": 166600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622162, "msg": {"type": "D1", "ts_ms": 166604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622162, "msg": {"type": "D2", "ts_ms": 166606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622213, "msg": {"type": "D0", "ts_ms": 166650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622263, "msg": {"type": "D0", "ts_ms": 166700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622263, "msg": {"type": "D1", "ts_ms": 166704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622313, "msg": {"type": "D0", "ts_ms": 166750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622364, "msg": {"type": "D0", "ts_ms": 166800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622364, "msg": {"type": "D1", "ts_ms": 166804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622364, "msg": {"type": "D2", "ts_ms": 166806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622414, "msg": {"type": "D0", "ts_ms": 166850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622464, "msg": {"type": "D0", "ts_ms": 166900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622464, "msg": {"type": "D1", "ts_ms": 166904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622515, "msg": {"type": "D0", "ts_ms": 166950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622565, "msg": {"type": "D0", "ts_ms": 167000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622565, "msg": {"type": "D1", "ts_ms": 167004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622565, "msg": {"type": "D2", "ts_ms": 167006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622615, "msg": {"type": "D0", "ts_ms": 167050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622665, "msg": {"type": "D0", "ts_ms": 167100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622665, "msg": {"type": "D1", "ts_ms": 167104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622716, "msg": {"type": "D0", "ts_ms": 167150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622766, "msg": {"type": "D0", "ts_ms": 167200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622766, "msg": {"type": "D1", "ts_ms": 167204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622766, "msg": {"type": "D2", "ts_ms": 167206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622816, "msg": {"type": "D0", "ts_ms": 167250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622867, "msg": {"type": "D0", "ts_ms": 167300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622867, "msg": {"type": "D1", "ts_ms": 167304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622917, "msg": {"type": "D0", "ts_ms": 167350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64622967, "msg": {"type": "D0", "ts_ms": 167400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623018, "msg": {"type": "D1", "ts_ms": 167404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623018, "msg": {"type": "D2", "ts_ms": 167406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623068, "msg": {"type": "D0", "ts_ms": 167450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623118, "msg": {"type": "D0", "ts_ms": 167500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623118, "msg": {"type": "D1", "ts_ms": 167504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623169, "msg": {"type": "D0", "ts_ms": 167550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623219, "msg": {"type": "D0", "ts_ms": 167600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623219, "msg": {"type": "D1", "ts_ms": 167604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623219, "msg": {"type": "D2", "ts_ms": 167606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623269, "msg": {"type": "D0", "ts_ms": 167650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623320, "msg": {"type": "D0", "ts_ms": 167700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623320, "msg": {"type": "D1", "ts_ms": 167704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623370, "msg": {"type": "D0", "ts_ms": 167750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623421, "msg": {"type": "D0", "ts_ms": 167800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623421, "msg": {"type": "D1", "ts_ms": 167804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623421, "msg": {"type": "D2", "ts_ms": 167806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623471, "msg": {"type": "D0", "ts_ms": 167850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623521, "msg": {"type": "D0", "ts_ms": 167900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623521, "msg": {"type": "D1", "ts_ms": 167904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623571, "msg": {"type": "D0", "ts_ms": 167950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623622, "msg": {"type": "D0", "ts_ms": 168000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623622, "msg": {"type": "D1", "ts_ms": 168004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623622, "msg": {"type": "D2", "ts_ms": 168006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623672, "msg": {"type": "D0", "ts_ms": 168050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623722, "msg": {"type": "D0", "ts_ms": 168100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623722, "msg": {"type": "D1", "ts_ms": 168104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623773, "msg": {"type": "D0", "ts_ms": 168150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623823, "msg": {"type": "D0", "ts_ms": 168200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623823, "msg": {"type": "D1", "ts_ms": 168204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623823, "msg": {"type": "D2", "ts_ms": 168206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623874, "msg": {"type": "D0", "ts_ms": 168250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623924, "msg": {"type": "D0", "ts_ms": 168300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623924, "msg": {"type": "D1", "ts_ms": 168304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64623975, "msg": {"type": "D0", "ts_ms": 168350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624025, "msg": {"type": "D0", "ts_ms": 168400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624025, "msg": {"type": "D1", "ts_ms": 168404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624025, "msg": {"type": "D2", "ts_ms": 168406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624075, "msg": {"type": "D0", "ts_ms": 168450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624126, "msg": {"type": "D0", "ts_ms": 168500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624126, "msg": {"type": "D1", "ts_ms": 168504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624176, "msg": {"type": "D0", "ts_ms": 168550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624226, "msg": {"type": "D0", "ts_ms": 168600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624226, "msg": {"type": "D1", "ts_ms": 168604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624226, "msg": {"type": "D2", "ts_ms": 168606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624277, "msg": {"type": "D0", "ts_ms": 168650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624327, "msg": {"type": "D0", "ts_ms": 168700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624327, "msg": {"type": "D1", "ts_ms": 168704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624377, "msg": {"type": "D0", "ts_ms": 168750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624428, "msg": {"type": "D0", "ts_ms": 168800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624478, "msg": {"type": "D1", "ts_ms": 168804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624478, "msg": {"type": "D2", "ts_ms": 168806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624478, "msg": {"type": "D0", "ts_ms": 168850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624579, "msg": {"type": "D0", "ts_ms": 168900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624579, "msg": {"type": "D1", "ts_ms": 168904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624629, "msg": {"type": "D0", "ts_ms": 168950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624679, "msg": {"type": "D0", "ts_ms": 169000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624679, "msg": {"type": "D1", "ts_ms": 169004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624679, "msg": {"type": "D2", "ts_ms": 169006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624730, "msg": {"type": "D0", "ts_ms": 169050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624780, "msg": {"type": "D0", "ts_ms": 169100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624780, "msg": {"type": "D1", "ts_ms": 169104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624830, "msg": {"type": "D0", "ts_ms": 169150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624881, "msg": {"type": "D0", "ts_ms": 169200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624881, "msg": {"type": "D1", "ts_ms": 169204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624881, "msg": {"type": "D2", "ts_ms": 169206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624931, "msg": {"type": "D0", "ts_ms": 169250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624981, "msg": {"type": "D0", "ts_ms": 169300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64624981, "msg": {"type": "D1", "ts_ms": 169304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625032, "msg": {"type": "D0", "ts_ms": 169350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625082, "msg": {"type": "D0", "ts_ms": 169400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625082, "msg": {"type": "D1", "ts_ms": 169404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625082, "msg": {"type": "D2", "ts_ms": 169406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625132, "msg": {"type": "D0", "ts_ms": 169450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625183, "msg": {"type": "D0", "ts_ms": 169500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625183, "msg": {"type": "D1", "ts_ms": 169504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625233, "msg": {"type": "D0", "ts_ms": 169550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625283, "msg": {"type": "D0", "ts_ms": 169600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625283, "msg": {"type": "D1", "ts_ms": 169604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625283, "msg": {"type": "D2", "ts_ms": 169606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625333, "msg": {"type": "D0", "ts_ms": 169650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625384, "msg": {"type": "D0", "ts_ms": 169700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625384, "msg": {"type": "D1", "ts_ms": 169704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625434, "msg": {"type": "D0", "ts_ms": 169750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625484, "msg": {"type": "D0", "ts_ms": 169800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625484, "msg": {"type": "D1", "ts_ms": 169804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625484, "msg": {"type": "D2", "ts_ms": 169806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625535, "msg": {"type": "D0", "ts_ms": 169850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625585, "msg": {"type": "D0", "ts_ms": 169900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625585, "msg": {"type": "D1", "ts_ms": 169904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625635, "msg": {"type": "D0", "ts_ms": 169950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625686, "msg": {"type": "D0", "ts_ms": 170000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625686, "msg": {"type": "D1", "ts_ms": 170004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625686, "msg": {"type": "D2", "ts_ms": 170006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625736, "msg": {"type": "D0", "ts_ms": 170050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625786, "msg": {"type": "D0", "ts_ms": 170100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625786, "msg": {"type": "D1", "ts_ms": 170104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625837, "msg": {"type": "D0", "ts_ms": 170150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625887, "msg": {"type": "D0", "ts_ms": 170200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625887, "msg": {"type": "D1", "ts_ms": 170204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625887, "msg": {"type": "D2", "ts_ms": 170206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625937, "msg": {"type": "D0", "ts_ms": 170250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64625988, "msg": {"type": "D0", "ts_ms": 170300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626038, "msg": {"type": "D1", "ts_ms": 170304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626088, "msg": {"type": "D0", "ts_ms": 170350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626139, "msg": {"type": "D0", "ts_ms": 170400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626139, "msg": {"type": "D1", "ts_ms": 170404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626139, "msg": {"type": "D2", "ts_ms": 170406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626189, "msg": {"type": "D0", "ts_ms": 170450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626239, "msg": {"type": "D0", "ts_ms": 170500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626239, "msg": {"type": "D1", "ts_ms": 170504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626290, "msg": {"type": "D0", "ts_ms": 170550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626340, "msg": {"type": "D0", "ts_ms": 170600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626340, "msg": {"type": "D1", "ts_ms": 170604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626340, "msg": {"type": "D2", "ts_ms": 170606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626390, "msg": {"type": "D0", "ts_ms": 170650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626440, "msg": {"type": "D0", "ts_ms": 170700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626440, "msg": {"type": "D1", "ts_ms": 170704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626491, "msg": {"type": "D0", "ts_ms": 170750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626541, "msg": {"type": "D0", "ts_ms": 170800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626541, "msg": {"type": "D1", "ts_ms": 170804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626541, "msg": {"type": "D2", "ts_ms": 170806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626592, "msg": {"type": "D0", "ts_ms": 170850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626642, "msg": {"type": "D0", "ts_ms": 170900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626642, "msg": {"type": "D1", "ts_ms": 170904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626692, "msg": {"type": "D0", "ts_ms": 170950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626742, "msg": {"type": "D0", "ts_ms": 171000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626742, "msg": {"type": "D1", "ts_ms": 171004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626742, "msg": {"type": "D2", "ts_ms": 171006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626793, "msg": {"type": "D0", "ts_ms": 171050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626843, "msg": {"type": "D0", "ts_ms": 171100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626843, "msg": {"type": "D1", "ts_ms": 171104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626893, "msg": {"type": "D0", "ts_ms": 171150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626944, "msg": {"type": "D0", "ts_ms": 171200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626944, "msg": {"type": "D1", "ts_ms": 171204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626944, "msg": {"type": "D2", "ts_ms": 171206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64626994, "msg": {"type": "D0", "ts_ms": 171250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627044, "msg": {"type": "D0", "ts_ms": 171300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627044, "msg": {"type": "D1", "ts_ms": 171304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627095, "msg": {"type": "D0", "ts_ms": 171350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627145, "msg": {"type": "D0", "ts_ms": 171400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627145, "msg": {"type": "D1", "ts_ms": 171404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627145, "msg": {"type": "D2", "ts_ms": 171406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627195, "msg": {"type": "D0", "ts_ms": 171450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627246, "msg": {"type": "D0", "ts_ms": 171500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627246, "msg": {"type": "D1", "ts_ms": 171504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627296, "msg": {"type": "D0", "ts_ms": 171550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627346, "msg": {"type": "D0", "ts_ms": 171600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627346, "msg": {"type": "D1", "ts_ms": 171604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627346, "msg": {"type": "D2", "ts_ms": 171606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627397, "msg": {"type": "D0", "ts_ms": 171650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627447, "msg": {"type": "D0", "ts_ms": 171700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627447, "msg": {"type": "D1", "ts_ms": 171704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627497, "msg": {"type": "D0", "ts_ms": 171750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627598, "msg": {"type": "D0", "ts_ms": 171800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627598, "msg": {"type": "D1", "ts_ms": 171804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627598, "msg": {"type": "D2", "ts_ms": 171806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627648, "msg": {"type": "D0", "ts_ms": 171850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627698, "msg": {"type": "D0", "ts_ms": 171900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627698, "msg": {"type": "D1", "ts_ms": 171904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627749, "msg": {"type": "D0", "ts_ms": 171950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627799, "msg": {"type": "D0", "ts_ms": 172000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627799, "msg": {"type": "D1", "ts_ms": 172004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627799, "msg": {"type": "D2", "ts_ms": 172006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627849, "msg": {"type": "D0", "ts_ms": 172050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627900, "msg": {"type": "D0", "ts_ms": 172100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627900, "msg": {"type": "D1", "ts_ms": 172104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64627950, "msg": {"type": "D0", "ts_ms": 172150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628000, "msg": {"type": "D0", "ts_ms": 172200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628000, "msg": {"type": "D1", "ts_ms": 172204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628000, "msg": {"type": "D2", "ts_ms": 172206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628051, "msg": {"type": "D0", "ts_ms": 172250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628101, "msg": {"type": "D0", "ts_ms": 172300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628101, "msg": {"type": "D1", "ts_ms": 172304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628151, "msg": {"type": "D0", "ts_ms": 172350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628202, "msg": {"type": "D0", "ts_ms": 172400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628202, "msg": {"type": "D1", "ts_ms": 172404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628202, "msg": {"type": "D2", "ts_ms": 172406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628252, "msg": {"type": "D0", "ts_ms": 172450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628302, "msg": {"type": "D0", "ts_ms": 172500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628302, "msg": {"type": "D1", "ts_ms": 172504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628353, "msg": {"type": "D0", "ts_ms": 172550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628403, "msg": {"type": "D0", "ts_ms": 172600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628403, "msg": {"type": "D1", "ts_ms": 172604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628403, "msg": {"type": "D2", "ts_ms": 172606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628453, "msg": {"type": "D0", "ts_ms": 172650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628504, "msg": {"type": "D0", "ts_ms": 172700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628504, "msg": {"type": "D1", "ts_ms": 172704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628554, "msg": {"type": "D0", "ts_ms": 172750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628604, "msg": {"type": "D0", "ts_ms": 172800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628604, "msg": {"type": "D1", "ts_ms": 172804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628604, "msg": {"type": "D2", "ts_ms": 172806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628654, "msg": {"type": "D0", "ts_ms": 172850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628705, "msg": {"type": "D0", "ts_ms": 172900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628705, "msg": {"type": "D1", "ts_ms": 172904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628755, "msg": {"type": "D0", "ts_ms": 172950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628805, "msg": {"type": "D0", "ts_ms": 173000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628805, "msg": {"type": "D1", "ts_ms": 173004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628805, "msg": {"type": "D2", "ts_ms": 173006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628856, "msg": {"type": "D0", "ts_ms": 173050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628906, "msg": {"type": "D0", "ts_ms": 173100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628906, "msg": {"type": "D1", "ts_ms": 173104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64628956, "msg": {"type": "D0", "ts_ms": 173150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629057, "msg": {"type": "D0", "ts_ms": 173200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629057, "msg": {"type": "D1", "ts_ms": 173204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629057, "msg": {"type": "D2", "ts_ms": 173206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629107, "msg": {"type": "D0", "ts_ms": 173250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629157, "msg": {"type": "D0", "ts_ms": 173300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629157, "msg": {"type": "D1", "ts_ms": 173304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629208, "msg": {"type": "D0", "ts_ms": 173350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629258, "msg": {"type": "D0", "ts_ms": 173400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629258, "msg": {"type": "D1", "ts_ms": 173404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629258, "msg": {"type": "D2", "ts_ms": 173406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629308, "msg": {"type": "D0", "ts_ms": 173450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629359, "msg": {"type": "D0", "ts_ms": 173500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629359, "msg": {"type": "D1", "ts_ms": 173504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629409, "msg": {"type": "D0", "ts_ms": 173550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629459, "msg": {"type": "D0", "ts_ms": 173600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629459, "msg": {"type": "D1", "ts_ms": 173604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629459, "msg": {"type": "D2", "ts_ms": 173606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629510, "msg": {"type": "D0", "ts_ms": 173650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629560, "msg": {"type": "D0", "ts_ms": 173700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629560, "msg": {"type": "D1", "ts_ms": 173704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629610, "msg": {"type": "D0", "ts_ms": 173750, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629661, "msg": {"type": "D0", "ts_ms": 173800, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629661, "msg": {"type": "D1", "ts_ms": 173804, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629661, "msg": {"type": "D2", "ts_ms": 173806, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629711, "msg": {"type": "D0", "ts_ms": 173850, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629761, "msg": {"type": "D0", "ts_ms": 173900, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629761, "msg": {"type": "D1", "ts_ms": 173904, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629812, "msg": {"type": "D0", "ts_ms": 173950, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629862, "msg": {"type": "D0", "ts_ms": 174000, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629862, "msg": {"type": "D1", "ts_ms": 174004, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629862, "msg": {"type": "D2", "ts_ms": 174006, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629912, "msg": {"type": "D0", "ts_ms": 174050, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629963, "msg": {"type": "D0", "ts_ms": 174100, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64629963, "msg": {"type": "D1", "ts_ms": 174104, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630013, "msg": {"type": "D0", "ts_ms": 174150, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630063, "msg": {"type": "D0", "ts_ms": 174200, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630063, "msg": {"type": "D1", "ts_ms": 174204, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630063, "msg": {"type": "D2", "ts_ms": 174206, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630114, "msg": {"type": "D0", "ts_ms": 174250, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630164, "msg": {"type": "D0", "ts_ms": 174300, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630164, "msg": {"type": "D1", "ts_ms": 174304, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630214, "msg": {"type": "D0", "ts_ms": 174350, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630265, "msg": {"type": "D0", "ts_ms": 174400, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630265, "msg": {"type": "D1", "ts_ms": 174404, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630265, "msg": {"type": "D2", "ts_ms": 174406, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630315, "msg": {"type": "D0", "ts_ms": 174450, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630365, "msg": {"type": "D0", "ts_ms": 174500, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630365, "msg": {"type": "D1", "ts_ms": 174504, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630416, "msg": {"type": "D0", "ts_ms": 174550, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630466, "msg": {"type": "D0", "ts_ms": 174600, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630516, "msg": {"type": "D1", "ts_ms": 174604, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630516, "msg": {"type": "D2", "ts_ms": 174606, "current_l": 123, "current_r": 234, "voltage_l": 1200, "voltage_r": 1180, "temp_l": 42, "temp_r": 43}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630566, "msg": {"type": "D0", "ts_ms": 174650, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630617, "msg": {"type": "D0", "ts_ms": 174700, "accel": [123.0, 124.0, 125.0], "magn": [126.0, 127.0, 128.0], "gyro": [129.0, 130.0, 131.0]}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"pc_rx_ms": 64630617, "msg": {"type": "D1", "ts_ms": 174704, "left_rpm": 123, "right_rpm": -456}, "time_model": {"a": 1.0, "b": 0.0, "lock": false}}
+{"_type": "log_stop", "unix_time": 1768809928.400161}
