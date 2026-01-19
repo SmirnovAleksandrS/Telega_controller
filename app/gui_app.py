@@ -10,6 +10,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from dataclasses import asdict
+import struct
 from typing import Optional, Any
 import collections
 
@@ -21,6 +22,8 @@ from comm.serial_worker import SerialWorker, RxEvent, RxError
 from comm.protocol import (
     build_sync_req, build_control,
     TYPE_D0_IMU, TYPE_D1_TACHO, TYPE_D2_MOTOR,
+    TYPE_B0_SYNC_REQ, TYPE_C0_CONTROL, TYPE_A0_DISABLE_D, TYPE_A1_ENABLE_D,
+    SOF, Frame, parse_frame,
     ImuData, TachoData, MotorData, SyncResp
 )
 from comm.time_sync import TimeModel, compute_sync_point, estimate_initial, update_model, SyncPoint
@@ -36,6 +39,7 @@ class VirtualControllerApp:
         self.root.minsize(980, 560)
 
         self.worker = SerialWorker()
+        self.worker.on_send = self._log_tx_raw
         self.logger = ParsedLogger()
 
         self.dev_cfg = DeviationConfig()
@@ -255,13 +259,6 @@ class VirtualControllerApp:
 
         pkt = build_control(ts_u32, left_cmd, right_cmd, self._control_duration_ms)
         self.worker.send(pkt)
-        self._log_tx({
-            "type": "C0",
-            "ts_ms": ts_u32,
-            "left_cmd": left_cmd,
-            "right_cmd": right_cmd,
-            "duration_ms": self._control_duration_ms,
-        })
 
     # ---------------- Sync logic ----------------
 
@@ -296,11 +293,6 @@ class VirtualControllerApp:
         t1_u32 = u32(now_ms)
         self._sync_pending[self._sync_seq] = t1_u32
         self.worker.send(build_sync_req(self._sync_seq, t1_u32))
-        self._log_tx({
-            "type": "B0",
-            "seq": self._sync_seq,
-            "t1_pc_ms": t1_u32,
-        })
 
     def _handle_sync_resp(self, resp: SyncResp, pc_rx_ms: int) -> None:
         """
@@ -404,7 +396,7 @@ class VirtualControllerApp:
         self._update_mcu_time_label()
         self.root.after(20, self._poll_rx)
 
-    def _log_tx(self, msg: dict) -> None:
+    def _log_tx_msg(self, msg: dict) -> None:
         log_obj = {
             "pc_tx_ms": now_ms_monotonic(),
             "direction": "tx",
@@ -420,6 +412,35 @@ class VirtualControllerApp:
                 self.logger.write_line(line)
         except Exception:
             pass
+
+    def _log_tx_raw(self, data: bytes) -> None:
+        msg = self._decode_tx_msg(data)
+        self._log_tx_msg(msg)
+
+    def _decode_tx_msg(self, data: bytes) -> dict:
+        if len(data) < 3 or data[0] != SOF:
+            return {"type": "unknown", "raw_len": len(data)}
+        msg_type = data[1]
+        ln = data[2]
+        if len(data) < 3 + ln:
+            return {"type": "unknown", "raw_len": len(data)}
+        payload = data[3:3+ln]
+
+        if msg_type == TYPE_B0_SYNC_REQ and ln == 6:
+            seq, t1 = struct.unpack_from("<HI", payload, 0)
+            return {"type": "B0", "seq": seq, "t1_pc_ms": t1}
+        if msg_type == TYPE_C0_CONTROL and ln == 10:
+            ts, l, r, dur = struct.unpack_from("<IhhH", payload, 0)
+            return {"type": "C0", "ts_ms": ts, "left_cmd": l, "right_cmd": r, "duration_ms": dur}
+        if msg_type == TYPE_A0_DISABLE_D and ln == 5:
+            ts, d_type = struct.unpack_from("<IB", payload, 0)
+            return {"type": "A0", "ts_ms": ts, "d_type": d_type}
+        if msg_type == TYPE_A1_ENABLE_D and ln == 7:
+            ts, d_type, period = struct.unpack_from("<IBH", payload, 0)
+            return {"type": "A1", "ts_ms": ts, "d_type": d_type, "period_ms": period}
+
+        parsed = parse_frame(Frame(msg_type=msg_type, payload=payload))
+        return self._msg_to_dict(parsed)
 
     def _quality_0_10(self) -> int:
         if not self._rx_ok:
@@ -526,4 +547,6 @@ class VirtualControllerApp:
             return {"type": "D1", **asdict(msg)}
         if isinstance(msg, SyncResp):
             return {"type": "F0", "t2_rx_ms": msg.t2_rx_ms, "t3_tx_ms": msg.t3_tx_ms}
+        if isinstance(msg, Frame):
+            return {"type": "unknown", "msg_type": msg.msg_type, "len": len(msg.payload)}
         return {"type": "unknown", "repr": repr(msg)}

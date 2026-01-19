@@ -44,6 +44,7 @@ class SerialWorker:
         self.is_open = False
         self.port = ""
         self.baud = 115200
+        self.on_send = None  # type: Optional[callable[[bytes], None]]
 
     @staticmethod
     def list_ports() -> list[str]:
@@ -79,6 +80,11 @@ class SerialWorker:
 
     def send(self, data: bytes) -> None:
         """Thread-safe send request."""
+        if self.on_send:
+            try:
+                self.on_send(data)
+            except Exception:
+                pass
         self.tx_queue.put(data)
 
     def _run(self) -> None:

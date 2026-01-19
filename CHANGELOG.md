@@ -31,6 +31,8 @@ Log format: .log (JSON Lines)
 - Keep RPM graph values steady between new data points by reusing last samples.
 - Add Time Sync button to trigger initial synchronization procedure.
 - Log outgoing PC messages (B0/C0) to file/console/GUI with dark-blue color.
+- Log all outgoing frames in decoded, human-readable form (no raw hex).
+- Avoid dumping raw payload bytes for unknown frames; log type and length only.
 
 ## Notes/Ideas
 - F0 payload in PDF lacks seq; implemented best-effort matching to last pending request.

@@ -288,7 +288,9 @@ class ManualTab(ttk.Frame):
         ])
         add_group("E: Errors", [("E0", "E0 - error code")])
         add_group("F: Responses", [("F0", "F0 - sync response")])
-        add_group("Other", [("unknown", "unknown - unparsed frame")])
+        add_group("Other", [
+            ("unknown", "unknown - unparsed frame"),
+        ])
 
         self._menu_tooltip = _MenuTooltip(btn)
         menu.bind("<<MenuSelect>>", self._on_filter_menu_select)
