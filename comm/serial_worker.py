@@ -45,6 +45,10 @@ class SerialWorker:
         self.port = ""
         self.baud = 115200
         self.on_send = None  # type: Optional[callable[[bytes], None]]
+        self.tx_packets = 0
+        self.tx_bytes = 0
+        self.last_tx_ms: Optional[int] = None
+        self.last_tx_error: str = ""
 
     @staticmethod
     def list_ports() -> list[str]:
@@ -95,7 +99,12 @@ class SerialWorker:
                 try:
                     while True:
                         pkt = self.tx_queue.get_nowait()
-                        self._ser.write(pkt)
+                        n = self._ser.write(pkt)
+                        self.tx_packets += 1
+                        self.tx_bytes += n
+                        self.last_tx_ms = now_ms_monotonic()
+                        if n != len(pkt):
+                            self.last_tx_error = f"short write {n}/{len(pkt)}"
                 except queue.Empty:
                     pass
 

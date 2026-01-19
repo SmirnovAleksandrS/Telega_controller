@@ -33,6 +33,10 @@ Log format: .log (JSON Lines)
 - Log outgoing PC messages (B0/C0) to file/console/GUI with dark-blue color.
 - Log all outgoing frames in decoded, human-readable form (no raw hex).
 - Avoid dumping raw payload bytes for unknown frames; log type and length only.
+- Show both received MCU timestamp and estimated MCU time in the GUI.
+- Display MCU times on separate lines and log rx_time alongside parsed payload timestamps.
+- Add TX status counters and last write info in GUI to confirm serial writes.
+- Remove TX status from GUI after debugging.
 
 ## Notes/Ideas
 - F0 payload in PDF lacks seq; implemented best-effort matching to last pending request.

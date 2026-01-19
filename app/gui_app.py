@@ -149,7 +149,7 @@ class VirtualControllerApp:
         self._make_param_row(crit, 3, "Temperature", self.temp_l, self.temp_r)
 
         # MCU Time
-        self.mcu_time_var = tk.StringVar(value="MCU Time: —")
+        self.mcu_time_var = tk.StringVar(value="MCU Time:\nrx=—\nest=—")
         ttk.Label(parent, textvariable=self.mcu_time_var).pack(anchor="w", pady=(6, 0))
 
         # Radio Quality
@@ -363,6 +363,8 @@ class VirtualControllerApp:
                     "msg": self._msg_to_dict(parsed),
                     "time_model": {"a": self.time_model.a, "b": self.time_model.b, "lock": self.time_model.have_lock}
                 }
+                if isinstance(parsed, (ImuData, TachoData, MotorData)):
+                    log_obj["rx_time"] = parsed.ts_ms
                 try:
                     line = self.logger.format_line(log_obj)
                     print(line, flush=True)
@@ -450,12 +452,13 @@ class VirtualControllerApp:
         return max(0, min(10, q))
 
     def _update_mcu_time_label(self) -> None:
-        if self._last_mcu_ts_u32 is None:
-            self.mcu_time_var.set("MCU Time: —")
-            return
-
-        # show MCU time as received u32
-        self.mcu_time_var.set(f"MCU Time: {self._last_mcu_ts_u32}")
+        rx = "—" if self._last_mcu_ts_u32 is None else str(self._last_mcu_ts_u32)
+        if self.time_model.have_lock:
+            now_ms = now_ms_monotonic()
+            est = str(u32(int(round(self.time_model.mcu_from_pc(now_ms)))))
+        else:
+            est = "—"
+        self.mcu_time_var.set(f"MCU Time:\nrx={rx}\nest={est}")
 
     def _update_motor(self, m: MotorData) -> None:
         # Update numbers
