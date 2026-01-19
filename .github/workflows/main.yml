@@ -1,0 +1,60 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Show files and requirements
+        run: |
+          pwd
+          dir
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyserial
+          python -m pip install pyinstaller
+          echo ===== pip show =====
+          python -m pip show pyserial
+          echo ===== pip list =====
+          python -m pip list
+
+      - name: Sanity-check imports
+        run: |
+          python -c "import serial, serial.tools.list_ports; print('All imports OK')"
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --onefile --windowed --hidden-import serial --hidden-import serial.tools.list_ports main.py
+
+      - name: Smoke-test EXE
+        run: |
+          $p = Start-Process dist\main.exe -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            if ($p.ExitCode -ne 0) {
+              throw "EXE exited with code $($p.ExitCode)"
+            }
+          } else {
+            Stop-Process -Id $p.Id
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-windows
+          path: dist/main.exe
