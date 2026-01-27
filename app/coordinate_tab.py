@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass
 import tkinter as tk
 from tkinter import ttk
-from typing import Optional
+from typing import Optional, Callable
 
 from app.styles import PANEL_BG, COLOR_GREEN, COLOR_RED
 from utils.bezier_math import (
@@ -33,9 +33,18 @@ class BezierNode:
 
 
 class CoordinateTab(ttk.Frame):
-    def __init__(self, master: tk.Widget) -> None:
+    def __init__(
+        self,
+        master: tk.Widget,
+        on_start: Optional[Callable[[], None]] = None,
+        on_stop: Optional[Callable[[], None]] = None,
+        on_state_change: Optional[Callable[[], None]] = None,
+    ) -> None:
         super().__init__(master, padding=6)
 
+        self.on_start = on_start
+        self.on_stop = on_stop
+        self.on_state_change = on_state_change
         self._grid_cells = 14
         self._canvas_size = 420
         self._hit_radius = 8
@@ -56,6 +65,8 @@ class CoordinateTab(ttk.Frame):
         self._speed_map = SpeedMapConfig()
         self._pwm_left = 1500.0
         self._pwm_right = 1500.0
+        self._track_circumference_m = 1.0
+        self._editable = True
 
         self._log_max_lines = 500
         self._log_lines = 0
@@ -186,6 +197,13 @@ class CoordinateTab(ttk.Frame):
         for var in [self._left_shift_var, self._right_shift_var, self._left_linear_var, self._right_linear_var]:
             var.trace_add("write", lambda *_: self._update_pwm_display())
 
+        btn_row = ttk.Frame(right)
+        btn_row.grid(row=6, column=0, sticky="w", pady=(14, 0))
+        self.start_btn = ttk.Button(btn_row, text="Start", width=14, command=self._on_start_click)
+        self.stop_btn = ttk.Button(btn_row, text="Stop", width=14, command=self._on_stop_click, state="disabled")
+        self.start_btn.pack(side="left", padx=(0, 10))
+        self.stop_btn.pack(side="left")
+
         self.bottom_nb = ttk.Notebook(self)
         self.bottom_nb.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
         self._build_log_tab()
@@ -237,6 +255,11 @@ class CoordinateTab(ttk.Frame):
         self._profile_v_right: list[float] = []
         self._hover_s: Optional[float] = None
         self._rpm_view: dict[str, float] = {}
+        self._actual_s: list[float] = []
+        self._actual_v_left: list[float] = []
+        self._actual_v_right: list[float] = []
+        self._last_actual_ts_ms: Optional[int] = None
+        self._suspend_state_notify = False
 
     def _center(self) -> tuple[float, float]:
         half = self._canvas_size / 2.0
@@ -289,7 +312,138 @@ class CoordinateTab(ttk.Frame):
 
     def set_speed_map(self, cfg: SpeedMapConfig) -> None:
         self._speed_map = cfg
+        self._track_circumference_m = cfg.track_circumference_m
         self._update_pwm_display()
+
+    def get_state(self) -> dict:
+        nodes = []
+        for node in self.nodes:
+            item = {
+                "anchor": [node.anchor[0], node.anchor[1]],
+                "handle_in": None,
+                "handle_out": None,
+            }
+            if node.handle_in is not None:
+                item["handle_in"] = [node.handle_in[0], node.handle_in[1]]
+            if node.handle_out is not None:
+                item["handle_out"] = [node.handle_out[0], node.handle_out[1]]
+            nodes.append(item)
+        return {
+            "nodes": nodes,
+            "scale": self._scale_var.get(),
+            "min_radius_cm": self._min_radius_var.get(),
+            "v_cm": self._v_cm_var.get(),
+            "accel": self._accel_var.get(),
+            "decel": self._decel_var.get(),
+            "dt_ms": self._dt_var.get(),
+            "left_shift": self._left_shift_var.get(),
+            "right_shift": self._right_shift_var.get(),
+            "left_linear": self._left_linear_var.get(),
+            "right_linear": self._right_linear_var.get(),
+            "view_scale": self._view_scale,
+            "view_pan": [self._view_pan[0], self._view_pan[1]],
+        }
+
+    def set_state(self, data: dict) -> None:
+        self._suspend_state_notify = True
+        nodes = data.get("nodes", [])
+        if isinstance(nodes, list) and nodes:
+            parsed = []
+            for item in nodes:
+                try:
+                    ax, ay = item.get("anchor", [0.0, 0.0])
+                    hin = item.get("handle_in")
+                    hout = item.get("handle_out")
+                    parsed.append(
+                        BezierNode(
+                            anchor=(float(ax), float(ay)),
+                            handle_in=(float(hin[0]), float(hin[1])) if hin else None,
+                            handle_out=(float(hout[0]), float(hout[1])) if hout else None,
+                        )
+                    )
+                except Exception:
+                    continue
+            if parsed:
+                cx, cy = self._center()
+                parsed[0].anchor = (cx, cy)
+                if parsed[0].handle_out:
+                    parsed[0].handle_out = (0.0, min(parsed[0].handle_out[1], -5.0))
+                self.nodes = parsed
+        self._scale_var.set(data.get("scale", self._scale_var.get()))
+        self._min_radius_var.set(str(data.get("min_radius_cm", self._min_radius_var.get())))
+        self._v_cm_var.set(str(data.get("v_cm", self._v_cm_var.get())))
+        self._accel_var.set(str(data.get("accel", self._accel_var.get())))
+        self._decel_var.set(str(data.get("decel", self._decel_var.get())))
+        self._dt_var.set(str(data.get("dt_ms", self._dt_var.get())))
+        self._left_shift_var.set(str(data.get("left_shift", self._left_shift_var.get())))
+        self._right_shift_var.set(str(data.get("right_shift", self._right_shift_var.get())))
+        self._left_linear_var.set(str(data.get("left_linear", self._left_linear_var.get())))
+        self._right_linear_var.set(str(data.get("right_linear", self._right_linear_var.get())))
+        try:
+            self._view_scale = float(data.get("view_scale", self._view_scale))
+        except Exception:
+            pass
+        try:
+            pan = data.get("view_pan", [self._view_pan[0], self._view_pan[1]])
+            self._view_pan = (float(pan[0]), float(pan[1]))
+        except Exception:
+            pass
+        self._suspend_state_notify = False
+        self._redraw()
+
+    def set_running(self, running: bool) -> None:
+        self._editable = not running
+        if running:
+            self.start_btn.configure(state="disabled")
+            self.stop_btn.configure(state="normal")
+        else:
+            self.start_btn.configure(state="normal")
+            self.stop_btn.configure(state="disabled")
+
+    def get_command_sequence(self) -> list[tuple[int, int]]:
+        if not self._profile_s:
+            return []
+        points = [
+            SpeedMapPoint(self._speed_map.pwm_1, self._speed_map.speed_1),
+            SpeedMapPoint(self._speed_map.pwm_2, self._speed_map.speed_2),
+            SpeedMapPoint(self._speed_map.pwm_3, self._speed_map.speed_3),
+        ]
+        cmds = []
+        for v_left, v_right in zip(self._profile_v_left, self._profile_v_right):
+            pwm_left = speed_to_pwm(v_left, points)
+            pwm_right = speed_to_pwm(v_right, points)
+            pwm_left = self._apply_pwm_correction(pwm_left, self._left_shift_var, self._left_linear_var)
+            pwm_right = self._apply_pwm_correction(pwm_right, self._right_shift_var, self._right_linear_var)
+            cmds.append((int(round(pwm_left)), int(round(pwm_right))))
+        return cmds
+
+    def get_time_quantum_ms(self) -> int:
+        return int(round(self._read_float(self._dt_var, self._dt_ms)))
+
+    def reset_actual_trace(self) -> None:
+        self._actual_s = []
+        self._actual_v_left = []
+        self._actual_v_right = []
+        self._last_actual_ts_ms = None
+        self._draw_rpm()
+
+    def add_actual_tacho(self, left_rpm: int, right_rpm: int, ts_ms: int) -> None:
+        if self._last_actual_ts_ms is None:
+            self._last_actual_ts_ms = ts_ms
+            return
+        dt_ms = (ts_ms - self._last_actual_ts_ms) & 0xFFFFFFFF
+        if dt_ms <= 0:
+            return
+        self._last_actual_ts_ms = ts_ms
+        dt = dt_ms / 1000.0
+        v_left = (left_rpm / 60.0) * self._track_circumference_m
+        v_right = (right_rpm / 60.0) * self._track_circumference_m
+        last_s = self._actual_s[-1] if self._actual_s else 0.0
+        s_next = last_s + (abs(v_left) + abs(v_right)) * 0.5 * dt
+        self._actual_s.append(s_next)
+        self._actual_v_left.append(v_left)
+        self._actual_v_right.append(v_right)
+        self._draw_rpm()
 
     # ---------------- Drawing ----------------
 
@@ -303,6 +457,7 @@ class CoordinateTab(ttk.Frame):
         self._draw_curve()
         self._draw_nodes()
         self._recompute_profile()
+        self._notify_state_change()
 
     def _draw_grid(self) -> None:
         step = self._cell_px()
@@ -415,13 +570,13 @@ class CoordinateTab(ttk.Frame):
             return
 
         max_abs = 0.1
-        for v in self._profile_v_left + self._profile_v_right:
+        for v in self._profile_v_left + self._profile_v_right + self._actual_v_left + self._actual_v_right:
             max_abs = max(max_abs, abs(v))
 
         def y_of(v: float) -> float:
             return top + (max_abs - v) * (bottom - top) / (2 * max_abs)
 
-        total = max(self._profile_s[-1], 1e-6)
+        total = max(self._profile_s[-1], self._actual_s[-1] if self._actual_s else 0.0, 1e-6)
         def x_of(s_val: float) -> float:
             return left + s_val * (right - left) / total
 
@@ -449,6 +604,9 @@ class CoordinateTab(ttk.Frame):
 
         draw_series(self._profile_v_left, "#cc0000")
         draw_series(self._profile_v_right, "#0044cc")
+        if self._actual_s:
+            draw_series(self._actual_v_left, "#cc6666")
+            draw_series(self._actual_v_right, "#6688cc")
         c.create_text(right - 5, top, text="L speed  R speed", anchor="ne", fill="#000000")
 
         self._rpm_view = {
@@ -524,6 +682,8 @@ class CoordinateTab(ttk.Frame):
     # ---------------- Interaction ----------------
 
     def _on_press(self, e: tk.Event) -> None:
+        if not self._editable:
+            return
         hit = self._hit_test(e.x, e.y)
         if hit:
             self._drag_target = hit
@@ -540,9 +700,13 @@ class CoordinateTab(ttk.Frame):
         if kind == "anchor":
             if idx == 0:
                 return
+            if not self._editable:
+                return
             mx, my = self._from_view((e.x, e.y))
             node.anchor = (mx, my)
         elif kind == "in":
+            if not self._editable:
+                return
             mx, my = self._from_view((e.x, e.y))
             offset = self._handle_offset(node.anchor, mx, my)
             self._set_symmetric_handle(node, idx, "in", offset)
@@ -553,6 +717,8 @@ class CoordinateTab(ttk.Frame):
                 offset = (0.0, min(dy, -5.0))
                 node.handle_out = offset
             else:
+                if not self._editable:
+                    return
                 mx, my = self._from_view((e.x, e.y))
                 offset = self._handle_offset(node.anchor, mx, my)
                 self._set_symmetric_handle(node, idx, "out", offset)
@@ -594,6 +760,8 @@ class CoordinateTab(ttk.Frame):
         self._redraw()
 
     def _on_double_click(self, e: tk.Event) -> None:
+        if not self._editable:
+            return
         hit = self._hit_test(e.x, e.y)
         if not hit:
             return
@@ -675,6 +843,14 @@ class CoordinateTab(ttk.Frame):
         if speeds[1] is not None and speeds[2] is not None:
             self._set_pwm_from_speeds(speeds[1], speeds[2])
 
+    def _on_start_click(self) -> None:
+        if self.on_start:
+            self.on_start()
+
+    def _on_stop_click(self) -> None:
+        if self.on_stop:
+            self.on_stop()
+
     def _draw_radius_label(self, pos: tuple[float, float], radius_m: Optional[float], speed_m_s: Optional[float], tag: str) -> None:
         label = "R=inf"
         if radius_m is not None:
@@ -750,6 +926,7 @@ class CoordinateTab(ttk.Frame):
         if speeds[1] is None or speeds[2] is None:
             return
         self._set_pwm_from_speeds(speeds[1], speeds[2])
+        self._notify_state_change()
 
     def _nearest_sample_by_s(self, s: float) -> Optional[dict[str, float]]:
         if not self._samples:
@@ -796,6 +973,12 @@ class CoordinateTab(ttk.Frame):
         label = f"V_L={speeds[1]:.2f} m/s\nV_R={speeds[2]:.2f} m/s"
         self.rpm_canvas.create_text(x + 8, top + 8, text=label, anchor="nw", fill="#202020", tags="hover")
         self._set_pwm_from_speeds(speeds[1], speeds[2])
+
+    def _notify_state_change(self) -> None:
+        if self._suspend_state_notify:
+            return
+        if self.on_state_change:
+            self.on_state_change()
 
     def _curvature_radii(self, sample: dict[str, float]) -> dict[str, Optional[float]]:
         segments = self._segments()

@@ -34,6 +34,7 @@ class SpeedMapConfig:
     speed_2: float = 0.0
     pwm_3: float = 1000.0
     speed_3: float = -10.0
+    track_circumference_m: float = 1.0
 
 class ComSettingsDialog(tk.Toplevel):
     def __init__(self, master: tk.Widget, current_port: str, current_baud: int) -> None:
@@ -219,8 +220,12 @@ class SpeedMapDialog(tk.Toplevel):
         add_row(2, self.cfg.pwm_2, self.cfg.speed_2)
         add_row(3, self.cfg.pwm_3, self.cfg.speed_3)
 
+        ttk.Label(frm, text="Track circumference (m)").grid(row=4, column=0, sticky="w", pady=(6, 0))
+        self.circ_var = tk.StringVar(value=str(self.cfg.track_circumference_m))
+        ttk.Entry(frm, textvariable=self.circ_var, width=10).grid(row=4, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+
         btns = ttk.Frame(frm)
-        btns.grid(row=4, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        btns.grid(row=5, column=0, columnspan=2, sticky="e", pady=(10, 0))
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
@@ -234,9 +239,13 @@ class SpeedMapDialog(tk.Toplevel):
                 pwm_1=float(p1.get()), speed_1=float(s1.get()),
                 pwm_2=float(p2.get()), speed_2=float(s2.get()),
                 pwm_3=float(p3.get()), speed_3=float(s3.get()),
+                track_circumference_m=float(self.circ_var.get()),
             )
         except ValueError:
             messagebox.showerror("Speed Parameters", "Invalid number format")
+            return
+        if cfg.track_circumference_m <= 0.0:
+            messagebox.showerror("Speed Parameters", "Track circumference must be > 0")
             return
         self.result = cfg
         self.destroy()

@@ -76,6 +76,10 @@ class VirtualControllerApp:
         self._control_period_ms = 50
         self._control_duration_ms = 100
         self._next_control_due_ms = now_ms_monotonic()
+        self._coord_running = False
+        self._coord_cmds: list[tuple[int, int]] = []
+        self._coord_idx = 0
+        self._coord_tick_ms = 10
 
         # Radio quality (simple heuristic)
         self._rx_ok = collections.deque(maxlen=200)
@@ -105,10 +109,17 @@ class VirtualControllerApp:
         self.nb.add(self.manual_tab, text="Manual")
         self._apply_joystick_settings()
 
-        self.coord_tab = CoordinateTab(self.nb)
+        self.coord_tab = CoordinateTab(
+            self.nb,
+            on_start=self._on_coord_start,
+            on_stop=self._on_coord_stop,
+            on_state_change=self._save_settings,
+        )
         self.nb.add(self.coord_tab, text="Coordinate")
         self._apply_geometry_settings()
         self._apply_speed_map_settings()
+        if hasattr(self, "_coord_state"):
+            self.coord_tab.set_state(self._coord_state)
 
         # Right panel
         right = ttk.Frame(main, width=280, padding=(10, 0, 0, 0))
@@ -286,6 +297,9 @@ class VirtualControllerApp:
     def _toggle_connect(self) -> None:
         if self.worker.is_open:
             self.worker.close()
+            if self._coord_running:
+                self._coord_running = False
+                self.coord_tab.set_running(False)
             self._refresh_connect_btn()
             return
 
@@ -304,6 +318,43 @@ class VirtualControllerApp:
             self.connect_btn.configure(text="Disconnect")
         else:
             self.connect_btn.configure(text="Connect")
+
+    def _on_coord_start(self) -> None:
+        if not self.worker.is_open:
+            messagebox.showerror("Coordinate", "Connect to the device first")
+            return
+        if self._coord_running:
+            return
+        self._begin_initial_sync()
+        self._coord_cmds = self.coord_tab.get_command_sequence()
+        if not self._coord_cmds:
+            messagebox.showerror("Coordinate", "No trajectory commands to send")
+            return
+        self._coord_idx = 0
+        self._coord_tick_ms = max(1, self.coord_tab.get_time_quantum_ms())
+        self._coord_running = True
+        self.coord_tab.set_running(True)
+        self.coord_tab.reset_actual_trace()
+        self._coord_send_tick()
+
+    def _on_coord_stop(self) -> None:
+        if not self._coord_running:
+            return
+        self._coord_running = False
+        self.coord_tab.set_running(False)
+
+    def _coord_send_tick(self) -> None:
+        if not self._coord_running:
+            return
+        if self._coord_idx >= len(self._coord_cmds):
+            self._coord_running = False
+            self.coord_tab.set_running(False)
+            return
+        left_cmd, right_cmd = self._coord_cmds[self._coord_idx]
+        self._coord_idx += 1
+        payload = build_control(now_ms_monotonic(), left_cmd, right_cmd, self._coord_tick_ms)
+        self.worker.send(payload)
+        self.root.after(self._coord_tick_ms, self._coord_send_tick)
 
     # ---------------- Control logic ----------------
 
@@ -472,6 +523,7 @@ class VirtualControllerApp:
                     self._update_mcu_time_label()
                 if isinstance(parsed, TachoData):
                     self.manual_tab.update_rpm(parsed.left_rpm, parsed.right_rpm)
+                    self.coord_tab.add_actual_tacho(parsed.left_rpm, parsed.right_rpm, parsed.ts_ms)
                 elif not isinstance(parsed, (MotorData, SyncResp, ImuData)):
                     # unknown Frame - ignore
                     pass
@@ -531,6 +583,7 @@ class VirtualControllerApp:
                 speed_2=float(speed.get("speed_2", self.speed_cfg.speed_2)),
                 pwm_3=float(speed.get("pwm_3", self.speed_cfg.pwm_3)),
                 speed_3=float(speed.get("speed_3", self.speed_cfg.speed_3)),
+                track_circumference_m=float(speed.get("track_circumference_m", self.speed_cfg.track_circumference_m)),
             )
         except Exception:
             pass
@@ -542,6 +595,10 @@ class VirtualControllerApp:
             "left_linear": float(joy.get("left_linear", self._joystick_cfg["left_linear"])),
             "right_linear": float(joy.get("right_linear", self._joystick_cfg["right_linear"])),
         }
+
+        coord = data.get("coordinate", {})
+        if isinstance(coord, dict):
+            self._coord_state = coord
 
     def _apply_joystick_settings(self) -> None:
         if not hasattr(self, "_joystick_cfg"):
@@ -564,6 +621,9 @@ class VirtualControllerApp:
         self.coord_tab.set_speed_map(self.speed_cfg)
 
     def _save_settings(self) -> None:
+        coord_state = None
+        if hasattr(self, "coord_tab"):
+            coord_state = self.coord_tab.get_state()
         data = {
             "com": {"port": self.worker.port, "baud": self.worker.baud},
             "deviation": {
@@ -585,6 +645,7 @@ class VirtualControllerApp:
                 "speed_2": self.speed_cfg.speed_2,
                 "pwm_3": self.speed_cfg.pwm_3,
                 "speed_3": self.speed_cfg.speed_3,
+                "track_circumference_m": self.speed_cfg.track_circumference_m,
             },
             "joystick": {
                 "left_shift": self._joystick_cfg["left_shift"],
@@ -592,6 +653,7 @@ class VirtualControllerApp:
                 "left_linear": self._joystick_cfg["left_linear"],
                 "right_linear": self._joystick_cfg["right_linear"],
             },
+            "coordinate": coord_state,
         }
         try:
             with open(self._settings_path, "w", encoding="utf-8") as fh:

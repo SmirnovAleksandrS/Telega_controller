@@ -32,6 +32,9 @@ Log format: .log (JSON Lines)
 - Motion profile: force full stop at path end for both tracks; RPM graph adds grid/units and hover linkage with path.
 - Coordinate tab: view zoom with mouse wheel and pan with right mouse button (visual only).
 - Physics: speed parameters table for PWM↔speed mapping; Coordinate shows left/right PWM (with shift/linear) on hover.
+- Coordinate: Start/Stop controls send motion commands after Time Sync; editing locked while running; actual tacho overlay on RPM graph.
+- Speed parameters: added track circumference (m) for RPM→m/s conversion.
+- Persist coordinate tab state (track, parameters, view) alongside manual settings.
 - Fix crash in right panel init by initializing value label registry before creating rows.
 - Update manual joystick math to center at 1500 with range 1000..2000, applying shift add and linear multiplier.
 - Add bottom Log/RPM tabs, move joystick to make room, and stream parsed logs to UI + console.
