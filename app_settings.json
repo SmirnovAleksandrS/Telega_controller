@@ -11,6 +11,10 @@
     "temp_normal": 40.0,
     "temp_delta": 20.0
   },
+  "geometry": {
+    "a1_cm": 20.0,
+    "a2_cm": 20.0
+  },
   "joystick": {
     "left_shift": 5.0,
     "right_shift": 0.0,

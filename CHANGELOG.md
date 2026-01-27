@@ -23,6 +23,12 @@ Log format: .log (JSON Lines)
   - saves parsed messages to .log as JSONL, includes PC receive time and time model snapshot
 
 ## Unreleased
+- Coordinate tab: grid canvas with scale selector, Bezier curve editor (anchors/handles), and minimum turning radius check (green/red).
+- Coordinate tab: delete anchor on double-click; show left/right track curves; hover shows curvature radii for center and tracks.
+- Physics menu: geometry parameters (A1/A2 in cm) persisted and applied to track offsets.
+- Coordinate tab: symmetric Bezier handles; added Log/RPM tabs like Manual (logs mirrored).
+- Coordinate tab: speed/accel/brake/dt inputs, motion profile math, hover shows track speeds, RPM graph plots track speeds vs distance.
+- Motion math extracted to utils/motion_math.py for easy edits.
 - Fix crash in right panel init by initializing value label registry before creating rows.
 - Update manual joystick math to center at 1500 with range 1000..2000, applying shift add and linear multiplier.
 - Add bottom Log/RPM tabs, move joystick to make room, and stream parsed logs to UI + console.

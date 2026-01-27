@@ -19,6 +19,12 @@ class DeviationConfig:
     temp_normal: float = 40.0
     temp_delta: float = 20.0
 
+
+@dataclass
+class GeometryConfig:
+    a1_cm: float = 20.0
+    a2_cm: float = 20.0
+
 class ComSettingsDialog(tk.Toplevel):
     def __init__(self, master: tk.Widget, current_port: str, current_baud: int) -> None:
         super().__init__(master)
@@ -123,6 +129,52 @@ class DeviationSettingsDialog(tk.Toplevel):
             return
 
         self.result = new
+        self.destroy()
+
+    def _cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+
+class GeometrySettingsDialog(tk.Toplevel):
+    def __init__(self, master: tk.Widget, cfg: GeometryConfig) -> None:
+        super().__init__(master)
+        self.title("Geometry Parameters")
+        self.resizable(False, False)
+
+        self.cfg = cfg
+        self.result: GeometryConfig | None = None
+
+        frm = ttk.Frame(self, padding=10)
+        frm.grid(row=0, column=0, sticky="nsew")
+
+        ttk.Label(frm, text="A1 (cm)").grid(row=0, column=0, sticky="w")
+        self.a1_var = tk.StringVar(value=str(self.cfg.a1_cm))
+        ttk.Entry(frm, textvariable=self.a1_var, width=10).grid(row=0, column=1, sticky="w", padx=(8, 0))
+
+        ttk.Label(frm, text="A2 (cm)").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        self.a2_var = tk.StringVar(value=str(self.cfg.a2_cm))
+        ttk.Entry(frm, textvariable=self.a2_var, width=10).grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+
+        btns = ttk.Frame(frm)
+        btns.grid(row=2, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
+
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+    def _ok(self) -> None:
+        try:
+            a1 = float(self.a1_var.get())
+            a2 = float(self.a2_var.get())
+        except ValueError:
+            messagebox.showerror("Geometry Parameters", "Invalid number format")
+            return
+        if a1 < 0 or a2 < 0:
+            messagebox.showerror("Geometry Parameters", "Values must be >= 0")
+            return
+        self.result = GeometryConfig(a1_cm=a1, a2_cm=a2)
         self.destroy()
 
     def _cancel(self) -> None:

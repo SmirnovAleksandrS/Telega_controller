@@ -17,7 +17,8 @@ import json
 import os
 
 from app.manual_tab import ManualTab
-from app.dialogs import ComSettingsDialog, DeviationSettingsDialog, DeviationConfig
+from app.coordinate_tab import CoordinateTab
+from app.dialogs import ComSettingsDialog, DeviationSettingsDialog, DeviationConfig, GeometrySettingsDialog, GeometryConfig
 from app.styles import PANEL_BG, STATUS_GREEN, STATUS_RED, COLOR_GREEN, COLOR_YELLOW, COLOR_RED
 
 from comm.serial_worker import SerialWorker, RxEvent, RxError
@@ -45,6 +46,7 @@ class VirtualControllerApp:
         self.logger = ParsedLogger()
 
         self.dev_cfg = DeviationConfig()
+        self.geom_cfg = GeometryConfig()
         self._settings_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "app_settings.json"))
         self._load_settings()
 
@@ -94,9 +96,9 @@ class VirtualControllerApp:
         self.nb.add(self.manual_tab, text="Manual")
         self._apply_joystick_settings()
 
-        coord_placeholder = ttk.Frame(self.nb)
-        ttk.Label(coord_placeholder, text="Coordinate: not implemented yet (per TZ).").pack(padx=20, pady=20)
-        self.nb.add(coord_placeholder, text="Coordinate")
+        self.coord_tab = CoordinateTab(self.nb)
+        self.nb.add(self.coord_tab, text="Coordinate")
+        self._apply_geometry_settings()
 
         # Right panel
         right = ttk.Frame(main, width=280, padding=(10, 0, 0, 0))
@@ -118,6 +120,10 @@ class VirtualControllerApp:
         menu_settings = tk.Menu(menubar, tearoff=0)
         menu_settings.add_command(label="COM Settings", command=self._open_com_settings)
         menubar.add_cascade(label="Settings", menu=menu_settings)
+
+        menu_physics = tk.Menu(menubar, tearoff=0)
+        menu_physics.add_command(label="Set geometry parameters", command=self._open_geometry_settings)
+        menubar.add_cascade(label="Physics", menu=menu_physics)
 
         self.root.config(menu=menubar)
 
@@ -241,6 +247,14 @@ class VirtualControllerApp:
             self.dev_cfg = dlg.result
             # Refresh coloring with last known values
             self._recolor_all()
+            self._save_settings()
+
+    def _open_geometry_settings(self) -> None:
+        dlg = GeometrySettingsDialog(self.root, self.geom_cfg)
+        self.root.wait_window(dlg)
+        if dlg.result:
+            self.geom_cfg = dlg.result
+            self._apply_geometry_settings()
             self._save_settings()
 
     def _on_exit(self) -> None:
@@ -420,6 +434,8 @@ class VirtualControllerApp:
                         msg_type = msg.get("type")
                     if self.manual_tab.should_show_log(msg_type):
                         self.manual_tab.append_log_line(line)
+                    if self.coord_tab.should_show_log(msg_type):
+                        self.coord_tab.append_log_line(line)
                     if self.logger.is_running:
                         self.logger.write_line(line)
                 except Exception:
@@ -478,6 +494,15 @@ class VirtualControllerApp:
         except Exception:
             pass
 
+        geom = data.get("geometry", {})
+        try:
+            self.geom_cfg = GeometryConfig(
+                a1_cm=float(geom.get("a1_cm", self.geom_cfg.a1_cm)),
+                a2_cm=float(geom.get("a2_cm", self.geom_cfg.a2_cm)),
+            )
+        except Exception:
+            pass
+
         joy = data.get("joystick", {})
         self._joystick_cfg = {
             "left_shift": float(joy.get("left_shift", self._joystick_cfg["left_shift"])),
@@ -496,6 +521,11 @@ class VirtualControllerApp:
             self._joystick_cfg["right_linear"],
         )
 
+    def _apply_geometry_settings(self) -> None:
+        if not hasattr(self, "geom_cfg"):
+            return
+        self.coord_tab.set_geometry(self.geom_cfg.a1_cm, self.geom_cfg.a2_cm)
+
     def _save_settings(self) -> None:
         data = {
             "com": {"port": self.worker.port, "baud": self.worker.baud},
@@ -506,6 +536,10 @@ class VirtualControllerApp:
                 "current_delta": self.dev_cfg.current_delta,
                 "temp_normal": self.dev_cfg.temp_normal,
                 "temp_delta": self.dev_cfg.temp_delta,
+            },
+            "geometry": {
+                "a1_cm": self.geom_cfg.a1_cm,
+                "a2_cm": self.geom_cfg.a2_cm,
             },
             "joystick": {
                 "left_shift": self._joystick_cfg["left_shift"],
@@ -532,6 +566,8 @@ class VirtualControllerApp:
             msg_type = msg.get("type")
             if self.manual_tab.should_show_log(msg_type):
                 self.manual_tab.append_log_line(line, tag="tx")
+            if self.coord_tab.should_show_log(msg_type):
+                self.coord_tab.append_log_line(line, tag="tx")
             if self.logger.is_running:
                 self.logger.write_line(line)
         except Exception:
