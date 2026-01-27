@@ -25,6 +25,16 @@ class GeometryConfig:
     a1_cm: float = 20.0
     a2_cm: float = 20.0
 
+
+@dataclass
+class SpeedMapConfig:
+    pwm_1: float = 2000.0
+    speed_1: float = 10.0
+    pwm_2: float = 1500.0
+    speed_2: float = 0.0
+    pwm_3: float = 1000.0
+    speed_3: float = -10.0
+
 class ComSettingsDialog(tk.Toplevel):
     def __init__(self, master: tk.Widget, current_port: str, current_baud: int) -> None:
         super().__init__(master)
@@ -175,6 +185,60 @@ class GeometrySettingsDialog(tk.Toplevel):
             messagebox.showerror("Geometry Parameters", "Values must be >= 0")
             return
         self.result = GeometryConfig(a1_cm=a1, a2_cm=a2)
+        self.destroy()
+
+    def _cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+
+class SpeedMapDialog(tk.Toplevel):
+    def __init__(self, master: tk.Widget, cfg: SpeedMapConfig) -> None:
+        super().__init__(master)
+        self.title("Speed Parameters")
+        self.resizable(False, False)
+
+        self.cfg = cfg
+        self.result: SpeedMapConfig | None = None
+
+        frm = ttk.Frame(self, padding=10)
+        frm.grid(row=0, column=0, sticky="nsew")
+
+        ttk.Label(frm, text="PWM").grid(row=0, column=0, sticky="w")
+        ttk.Label(frm, text="Speed (m/s)").grid(row=0, column=1, sticky="w", padx=(8, 0))
+
+        self._vars = []
+        def add_row(r: int, pwm: float, speed: float) -> None:
+            v_pwm = tk.StringVar(value=str(pwm))
+            v_spd = tk.StringVar(value=str(speed))
+            ttk.Entry(frm, textvariable=v_pwm, width=10).grid(row=r, column=0, sticky="w", pady=4)
+            ttk.Entry(frm, textvariable=v_spd, width=10).grid(row=r, column=1, sticky="w", padx=(8, 0), pady=4)
+            self._vars.append((v_pwm, v_spd))
+
+        add_row(1, self.cfg.pwm_1, self.cfg.speed_1)
+        add_row(2, self.cfg.pwm_2, self.cfg.speed_2)
+        add_row(3, self.cfg.pwm_3, self.cfg.speed_3)
+
+        btns = ttk.Frame(frm)
+        btns.grid(row=4, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
+
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+    def _ok(self) -> None:
+        try:
+            (p1, s1), (p2, s2), (p3, s3) = self._vars
+            cfg = SpeedMapConfig(
+                pwm_1=float(p1.get()), speed_1=float(s1.get()),
+                pwm_2=float(p2.get()), speed_2=float(s2.get()),
+                pwm_3=float(p3.get()), speed_3=float(s3.get()),
+            )
+        except ValueError:
+            messagebox.showerror("Speed Parameters", "Invalid number format")
+            return
+        self.result = cfg
         self.destroy()
 
     def _cancel(self) -> None:

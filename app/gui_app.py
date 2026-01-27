@@ -18,7 +18,15 @@ import os
 
 from app.manual_tab import ManualTab
 from app.coordinate_tab import CoordinateTab
-from app.dialogs import ComSettingsDialog, DeviationSettingsDialog, DeviationConfig, GeometrySettingsDialog, GeometryConfig
+from app.dialogs import (
+    ComSettingsDialog,
+    DeviationSettingsDialog,
+    DeviationConfig,
+    GeometrySettingsDialog,
+    GeometryConfig,
+    SpeedMapDialog,
+    SpeedMapConfig,
+)
 from app.styles import PANEL_BG, STATUS_GREEN, STATUS_RED, COLOR_GREEN, COLOR_YELLOW, COLOR_RED
 
 from comm.serial_worker import SerialWorker, RxEvent, RxError
@@ -47,6 +55,7 @@ class VirtualControllerApp:
 
         self.dev_cfg = DeviationConfig()
         self.geom_cfg = GeometryConfig()
+        self.speed_cfg = SpeedMapConfig()
         self._settings_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "app_settings.json"))
         self._load_settings()
 
@@ -99,6 +108,7 @@ class VirtualControllerApp:
         self.coord_tab = CoordinateTab(self.nb)
         self.nb.add(self.coord_tab, text="Coordinate")
         self._apply_geometry_settings()
+        self._apply_speed_map_settings()
 
         # Right panel
         right = ttk.Frame(main, width=280, padding=(10, 0, 0, 0))
@@ -123,6 +133,7 @@ class VirtualControllerApp:
 
         menu_physics = tk.Menu(menubar, tearoff=0)
         menu_physics.add_command(label="Set geometry parameters", command=self._open_geometry_settings)
+        menu_physics.add_command(label="Speed parameters", command=self._open_speed_settings)
         menubar.add_cascade(label="Physics", menu=menu_physics)
 
         self.root.config(menu=menubar)
@@ -255,6 +266,14 @@ class VirtualControllerApp:
         if dlg.result:
             self.geom_cfg = dlg.result
             self._apply_geometry_settings()
+            self._save_settings()
+
+    def _open_speed_settings(self) -> None:
+        dlg = SpeedMapDialog(self.root, self.speed_cfg)
+        self.root.wait_window(dlg)
+        if dlg.result:
+            self.speed_cfg = dlg.result
+            self._apply_speed_map_settings()
             self._save_settings()
 
     def _on_exit(self) -> None:
@@ -503,6 +522,19 @@ class VirtualControllerApp:
         except Exception:
             pass
 
+        speed = data.get("speed_map", {})
+        try:
+            self.speed_cfg = SpeedMapConfig(
+                pwm_1=float(speed.get("pwm_1", self.speed_cfg.pwm_1)),
+                speed_1=float(speed.get("speed_1", self.speed_cfg.speed_1)),
+                pwm_2=float(speed.get("pwm_2", self.speed_cfg.pwm_2)),
+                speed_2=float(speed.get("speed_2", self.speed_cfg.speed_2)),
+                pwm_3=float(speed.get("pwm_3", self.speed_cfg.pwm_3)),
+                speed_3=float(speed.get("speed_3", self.speed_cfg.speed_3)),
+            )
+        except Exception:
+            pass
+
         joy = data.get("joystick", {})
         self._joystick_cfg = {
             "left_shift": float(joy.get("left_shift", self._joystick_cfg["left_shift"])),
@@ -526,6 +558,11 @@ class VirtualControllerApp:
             return
         self.coord_tab.set_geometry(self.geom_cfg.a1_cm, self.geom_cfg.a2_cm)
 
+    def _apply_speed_map_settings(self) -> None:
+        if not hasattr(self, "speed_cfg"):
+            return
+        self.coord_tab.set_speed_map(self.speed_cfg)
+
     def _save_settings(self) -> None:
         data = {
             "com": {"port": self.worker.port, "baud": self.worker.baud},
@@ -540,6 +577,14 @@ class VirtualControllerApp:
             "geometry": {
                 "a1_cm": self.geom_cfg.a1_cm,
                 "a2_cm": self.geom_cfg.a2_cm,
+            },
+            "speed_map": {
+                "pwm_1": self.speed_cfg.pwm_1,
+                "speed_1": self.speed_cfg.speed_1,
+                "pwm_2": self.speed_cfg.pwm_2,
+                "speed_2": self.speed_cfg.speed_2,
+                "pwm_3": self.speed_cfg.pwm_3,
+                "speed_3": self.speed_cfg.speed_3,
             },
             "joystick": {
                 "left_shift": self._joystick_cfg["left_shift"],

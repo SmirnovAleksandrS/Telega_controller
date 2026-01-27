@@ -29,6 +29,9 @@ Log format: .log (JSON Lines)
 - Coordinate tab: symmetric Bezier handles; added Log/RPM tabs like Manual (logs mirrored).
 - Coordinate tab: speed/accel/brake/dt inputs, motion profile math, hover shows track speeds, RPM graph plots track speeds vs distance.
 - Motion math extracted to utils/motion_math.py for easy edits.
+- Motion profile: force full stop at path end for both tracks; RPM graph adds grid/units and hover linkage with path.
+- Coordinate tab: view zoom with mouse wheel and pan with right mouse button (visual only).
+- Physics: speed parameters table for PWM↔speed mapping; Coordinate shows left/right PWM (with shift/linear) on hover.
 - Fix crash in right panel init by initializing value label registry before creating rows.
 - Update manual joystick math to center at 1500 with range 1000..2000, applying shift add and linear multiplier.
 - Add bottom Log/RPM tabs, move joystick to make room, and stream parsed logs to UI + console.

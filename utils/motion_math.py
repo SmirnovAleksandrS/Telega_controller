@@ -60,8 +60,9 @@ def build_path_samples(
 
 def track_speeds_from_center(v_cm: float, k: float, a1: float, a2: float) -> tuple[float, float]:
     # Isolated formula for easy future edits of the kinematics.
-    v_left = v_cm * (1.0 - a1 * k)
-    v_right = v_cm * (1.0 + a2 * k)
+    # Note: sign convention keeps outer track faster for positive curvature.
+    v_left = v_cm * (1.0 + a1 * k)
+    v_right = v_cm * (1.0 - a2 * k)
     return v_left, v_right
 
 
@@ -142,9 +143,6 @@ def plan_profile(samples: list[PathSample], params: MotionParams) -> MotionProfi
         remaining = max(0.0, total_len - s)
         vcm_eff = center_speed_from_tracks(v_left, v_right, k_at_s(s), params.a1, params.a2)
         vcm_abs = abs(vcm_eff)
-        # Stop planning when we reached the end and fully stopped.
-        if remaining <= 1e-6 and vcm_abs <= 1e-6 and abs(v_left) <= 1e-6 and abs(v_right) <= 1e-6:
-            break
 
         # Simple braking distance for CM to stop.
         if params.decel > 0.0:
