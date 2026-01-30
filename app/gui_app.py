@@ -76,6 +76,10 @@ class VirtualControllerApp:
         self._control_period_ms = 50
         self._control_duration_ms = 100
         self._next_control_due_ms = now_ms_monotonic()
+        self._manual_neutral = 1500
+        self._active_tab = "Manual"
+        self._kill_active = False
+        self._kill_tick_ms = 200
         self._coord_running = False
         self._coord_cmds: list[tuple[int, int]] = []
         self._coord_idx = 0
@@ -120,6 +124,7 @@ class VirtualControllerApp:
         self._apply_speed_map_settings()
         if hasattr(self, "_coord_state"):
             self.coord_tab.set_state(self._coord_state)
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_change)
 
         # Right panel
         right = ttk.Frame(main, width=280, padding=(10, 0, 0, 0))
@@ -199,6 +204,9 @@ class VirtualControllerApp:
         # Deviation settings button
         ttk.Button(parent, text="Deviation Settings", command=self._open_deviation_settings).pack(fill="x", pady=(14, 0))
         ttk.Button(parent, text="Time Sync", command=self._begin_initial_sync).pack(fill="x", pady=(8, 0))
+        self.kill_btn = ttk.Button(parent, text="KILL SWITCH", command=self._kill_switch)
+        self.kill_btn.pack(fill="x", pady=(12, 0))
+        self._apply_kill_style()
 
     def _make_param_row(self, parent: tk.Widget, row: int, name: str, var_l: tk.StringVar, var_r: tk.StringVar) -> None:
         ttk.Label(parent, text=name).grid(row=row, column=0, sticky="w", pady=4)
@@ -319,9 +327,23 @@ class VirtualControllerApp:
         else:
             self.connect_btn.configure(text="Connect")
 
+    def _apply_kill_style(self) -> None:
+        style = ttk.Style(self.root)
+        style.configure("KillOff.TButton", foreground="#ffffff", background="#cc0000", padding=8)
+        style.map("KillOff.TButton",
+                  foreground=[("active", "#ffffff")],
+                  background=[("active", "#aa0000")])
+        style.configure("KillOn.TButton", foreground="#ffffff", background="#550000", padding=8)
+        style.map("KillOn.TButton",
+                  foreground=[("active", "#ffffff")],
+                  background=[("active", "#770000")])
+        if hasattr(self, "kill_btn"):
+            self._update_kill_indicator()
+
     def _on_coord_start(self) -> None:
-        if not self.worker.is_open:
-            messagebox.showerror("Coordinate", "Connect to the device first")
+        send_enabled = self.worker.is_open
+        if self._kill_active:
+            messagebox.showerror("Coordinate", "Kill switch is active")
             return
         if self._coord_running:
             return
@@ -332,27 +354,34 @@ class VirtualControllerApp:
             return
         self._coord_idx = 0
         self._coord_tick_ms = max(1, self.coord_tab.get_time_quantum_ms())
-        self._coord_running = True
+        self._coord_running = send_enabled
         self.coord_tab.set_running(True)
         self.coord_tab.reset_actual_trace()
-        self._coord_send_tick()
+        self.coord_tab.start_expected(now_ms_monotonic())
+        if send_enabled:
+            self._coord_send_tick()
 
     def _on_coord_stop(self) -> None:
         if not self._coord_running:
+            self.coord_tab.set_running(False)
+            self.coord_tab.stop_expected()
             return
         self._coord_running = False
         self.coord_tab.set_running(False)
+        self.coord_tab.stop_expected()
 
     def _coord_send_tick(self) -> None:
-        if not self._coord_running:
+        if not self._coord_running or self._kill_active:
             return
         if self._coord_idx >= len(self._coord_cmds):
             self._coord_running = False
             self.coord_tab.set_running(False)
+            self.coord_tab.stop_expected()
             return
         left_cmd, right_cmd = self._coord_cmds[self._coord_idx]
         self._coord_idx += 1
-        payload = build_control(now_ms_monotonic(), left_cmd, right_cmd, self._coord_tick_ms)
+        # Swap tracks for coordinate mode (per hardware wiring).
+        payload = build_control(now_ms_monotonic(), right_cmd, left_cmd, self._coord_tick_ms)
         self.worker.send(payload)
         self.root.after(self._coord_tick_ms, self._coord_send_tick)
 
@@ -373,6 +402,12 @@ class VirtualControllerApp:
     def _send_control_if_due(self, now_ms: int) -> None:
         if not self.worker.is_open:
             return
+        if self._kill_active:
+            return
+        if self._coord_running:
+            return
+        if self._active_tab != "Manual":
+            return
         if now_ms < self._next_control_due_ms:
             return
         self._next_control_due_ms = now_ms + self._control_period_ms
@@ -389,6 +424,48 @@ class VirtualControllerApp:
 
         pkt = build_control(ts_u32, left_cmd, right_cmd, self._control_duration_ms)
         self.worker.send(pkt)
+
+    def _on_tab_change(self, _event: tk.Event) -> None:
+        try:
+            tab_text = self.nb.tab(self.nb.select(), "text")
+        except Exception:
+            return
+        self._active_tab = tab_text
+        if tab_text != "Coordinate" and self._coord_running:
+            self._coord_running = False
+            self.coord_tab.set_running(False)
+            self.coord_tab.stop_expected()
+        if tab_text != "Manual" and self.worker.is_open and not self._kill_active:
+            ts_u32 = u32(now_ms_monotonic())
+            pkt = build_control(ts_u32, self._manual_neutral, self._manual_neutral, self._control_duration_ms)
+            self.worker.send(pkt)
+
+    def _kill_switch(self) -> None:
+        self._kill_active = not self._kill_active
+        self._update_kill_indicator()
+        if self._kill_active:
+            self._coord_running = False
+            self.coord_tab.set_running(False)
+            self.coord_tab.stop_expected()
+            self._last_control = (self._manual_neutral, self._manual_neutral)
+            self._kill_send_tick()
+
+    def _update_kill_indicator(self) -> None:
+        if not hasattr(self, "kill_btn"):
+            return
+        if self._kill_active:
+            self.kill_btn.configure(text="KILL SWITCH (ON)", style="KillOn.TButton")
+        else:
+            self.kill_btn.configure(text="KILL SWITCH", style="KillOff.TButton")
+
+    def _kill_send_tick(self) -> None:
+        if not self._kill_active:
+            return
+        if self.worker.is_open:
+            ts_u32 = u32(now_ms_monotonic())
+            pkt = build_control(ts_u32, self._manual_neutral, self._manual_neutral, self._control_duration_ms)
+            self.worker.send(pkt)
+        self.root.after(self._kill_tick_ms, self._kill_send_tick)
 
     # ---------------- Sync logic ----------------
 

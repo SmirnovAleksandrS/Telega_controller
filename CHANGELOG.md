@@ -35,6 +35,9 @@ Log format: .log (JSON Lines)
 - Coordinate: Start/Stop controls send motion commands after Time Sync; editing locked while running; actual tacho overlay on RPM graph.
 - Speed parameters: added track circumference (m) for RPM→m/s conversion.
 - Persist coordinate tab state (track, parameters, view) alongside manual settings.
+- Routing: send control only from active tab, add KILL SWITCH, swap track commands in coordinate mode.
+- Kill switch: toggle state with indicator, blocks all other commands, and continuously sends stop commands while active.
+- Coordinate: expected position markers from planned timing; odometry markers from real tacho using fixed 10Hz integration.
 - Fix crash in right panel init by initializing value label registry before creating rows.
 - Update manual joystick math to center at 1500 with range 1000..2000, applying shift add and linear multiplier.
 - Add bottom Log/RPM tabs, move joystick to make room, and stream parsed logs to UI + console.

@@ -14,6 +14,7 @@ from tkinter import ttk
 from typing import Optional, Callable
 
 from app.styles import PANEL_BG, COLOR_GREEN, COLOR_RED
+from utils.timebase import now_ms_monotonic
 from utils.bezier_math import (
     cubic_point,
     cubic_derivative,
@@ -255,10 +256,17 @@ class CoordinateTab(ttk.Frame):
         self._profile_v_right: list[float] = []
         self._hover_s: Optional[float] = None
         self._rpm_view: dict[str, float] = {}
+        self._expected_poses: list[tuple[float, float, float]] = []
+        self._expected_world: Optional[tuple[float, float, float]] = None
+        self._expected_start_ms: Optional[int] = None
+        self._expected_dt_s: float = 0.0
+        self._expected_running = False
         self._actual_s: list[float] = []
         self._actual_v_left: list[float] = []
         self._actual_v_right: list[float] = []
         self._last_actual_ts_ms: Optional[int] = None
+        self._actual_pose: Optional[tuple[float, float, float]] = None
+        self._actual_world: Optional[tuple[float, float, float]] = None
         self._suspend_state_notify = False
 
     def _center(self) -> tuple[float, float]:
@@ -304,6 +312,11 @@ class CoordinateTab(ttk.Frame):
 
     def _meters_to_px(self, meters: float) -> float:
         return meters / self._meters_per_px()
+
+    def _world_to_model(self, pt: tuple[float, float]) -> tuple[float, float]:
+        cx, cy = self._center()
+        px_per_m = 1.0 / self._meters_per_px()
+        return (cx + pt[0] * px_per_m, cy - pt[1] * px_per_m)
 
     def set_geometry(self, a1_cm: float, a2_cm: float) -> None:
         self._a1_cm = max(a1_cm, 0.0)
@@ -425,17 +438,16 @@ class CoordinateTab(ttk.Frame):
         self._actual_v_left = []
         self._actual_v_right = []
         self._last_actual_ts_ms = None
+        self._actual_pose = None
+        self._actual_world = None
         self._draw_rpm()
+        self._draw_markers()
 
     def add_actual_tacho(self, left_rpm: int, right_rpm: int, ts_ms: int) -> None:
-        if self._last_actual_ts_ms is None:
-            self._last_actual_ts_ms = ts_ms
-            return
-        dt_ms = (ts_ms - self._last_actual_ts_ms) & 0xFFFFFFFF
-        if dt_ms <= 0:
-            return
+        if self._actual_pose is None:
+            self._actual_pose = (0.0, 0.0, 0.0)
         self._last_actual_ts_ms = ts_ms
-        dt = dt_ms / 1000.0
+        dt = 0.1
         v_left = (left_rpm / 60.0) * self._track_circumference_m
         v_right = (right_rpm / 60.0) * self._track_circumference_m
         last_s = self._actual_s[-1] if self._actual_s else 0.0
@@ -443,7 +455,10 @@ class CoordinateTab(ttk.Frame):
         self._actual_s.append(s_next)
         self._actual_v_left.append(v_left)
         self._actual_v_right.append(v_right)
+        self._actual_pose = self._integrate_pose(self._actual_pose, v_left, v_right, dt)
+        self._actual_world = self._actual_pose
         self._draw_rpm()
+        self._draw_markers()
 
     # ---------------- Drawing ----------------
 
@@ -458,6 +473,7 @@ class CoordinateTab(ttk.Frame):
         self._draw_nodes()
         self._recompute_profile()
         self._notify_state_change()
+        self._draw_markers()
 
     def _draw_grid(self) -> None:
         step = self._cell_px()
@@ -541,6 +557,8 @@ class CoordinateTab(ttk.Frame):
         self._profile_s = profile.s
         self._profile_v_left = profile.v_left
         self._profile_v_right = profile.v_right
+        self._expected_dt_s = params.dt
+        self._build_expected_poses()
         self._draw_rpm()
 
     def _read_float(self, var: tk.StringVar, default: float) -> float:
@@ -619,6 +637,88 @@ class CoordinateTab(ttk.Frame):
         }
         if self._hover_s is not None:
             self._draw_rpm_hover(self._hover_s)
+
+    def start_expected(self, start_ms: int) -> None:
+        if not self._expected_poses:
+            return
+        self._expected_start_ms = start_ms
+        self._expected_running = True
+        self._expected_tick()
+
+    def stop_expected(self) -> None:
+        self._expected_running = False
+        self._expected_start_ms = None
+        self._expected_world = None
+        self._draw_markers()
+
+    def _expected_tick(self) -> None:
+        if not self._expected_running:
+            return
+        if not self._expected_poses or self._expected_start_ms is None:
+            return
+        if self._expected_dt_s <= 0.0:
+            return
+        elapsed = max(0.0, (now_ms_monotonic() - self._expected_start_ms) / 1000.0)
+        idx = min(int(elapsed / self._expected_dt_s), len(self._expected_poses) - 1)
+        self._expected_world = self._expected_poses[idx]
+        self._draw_markers()
+        self.after(50, self._expected_tick)
+
+    def _build_expected_poses(self) -> None:
+        self._expected_poses = []
+        if not self._profile_v_left or self._expected_dt_s <= 0.0:
+            return
+        pose = (0.0, 0.0, 0.0)
+        self._expected_poses.append(pose)
+        for v_left, v_right in zip(self._profile_v_left, self._profile_v_right):
+            pose = self._integrate_pose(pose, v_left, v_right, self._expected_dt_s)
+            self._expected_poses.append(pose)
+
+    def _integrate_pose(
+        self,
+        pose: tuple[float, float, float],
+        v_left: float,
+        v_right: float,
+        dt: float,
+    ) -> tuple[float, float, float]:
+        x, y, theta = pose
+        L = (self._a1_cm + self._a2_cm) / 100.0
+        if L <= 1e-9:
+            return (x, y, theta)
+        v = 0.5 * (v_right + v_left)
+        w = (v_right - v_left) / L
+        if abs(w) <= 1e-6:
+            x += v * dt * math.sin(theta)
+            y += v * dt * math.cos(theta)
+        else:
+            dtheta = w * dt
+            R = -v / w
+            x += R * (math.cos(theta + dtheta) - math.cos(theta))
+            y += R * (math.sin(theta) - math.sin(theta + dtheta))
+            theta += dtheta
+        return (x, y, theta)
+
+    def _track_centers(self, pose: tuple[float, float, float]) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+        x, y, theta = pose
+        a1 = self._a1_cm / 100.0
+        a2 = self._a2_cm / 100.0
+        left = (x - math.cos(theta) * a1, y + math.sin(theta) * a1)
+        right = (x + math.cos(theta) * a2, y - math.sin(theta) * a2)
+        return (x, y), left, right
+
+    def _draw_markers(self) -> None:
+        self.canvas.delete("marker")
+        if self._expected_world is not None:
+            self._draw_pose_marker(self._expected_world, "#00aa00")
+        if self._actual_world is not None:
+            self._draw_pose_marker(self._actual_world, "#ff8800")
+
+    def _draw_pose_marker(self, pose: tuple[float, float, float], color: str) -> None:
+        center, left, right = self._track_centers(pose)
+        for pt in (center, left, right):
+            mx, my = self._world_to_model(pt)
+            vx, vy = self._to_view((mx, my))
+            self.canvas.create_oval(vx - 4, vy - 4, vx + 4, vy + 4, fill=color, outline="#000000", tags="marker")
 
     def _draw_nodes(self) -> None:
         for idx, node in enumerate(self.nodes):
