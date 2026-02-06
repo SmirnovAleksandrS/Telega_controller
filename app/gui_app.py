@@ -347,8 +347,9 @@ class VirtualControllerApp:
             return
         if self._coord_running:
             return
+        self.coord_tab.refresh_profile()
         self._begin_initial_sync()
-        self._coord_cmds = self.coord_tab.get_command_sequence()
+        self._coord_cmds = self.coord_tab.prepare_expected()
         if not self._coord_cmds:
             messagebox.showerror("Coordinate", "No trajectory commands to send")
             return

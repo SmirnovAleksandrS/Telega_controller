@@ -22,7 +22,7 @@ from utils.bezier_math import (
     min_curve_radius,
 )
 from utils.motion_math import MotionParams, build_path_samples, plan_profile
-from utils.speed_map import SpeedMapPoint, speed_to_pwm
+from utils.speed_map import SpeedMapPoint, speed_to_pwm, pwm_to_speed
 from app.dialogs import SpeedMapConfig
 
 
@@ -261,6 +261,7 @@ class CoordinateTab(ttk.Frame):
         self._expected_start_ms: Optional[int] = None
         self._expected_dt_s: float = 0.0
         self._expected_running = False
+        self._expected_cmds: list[tuple[int, int]] = []
         self._actual_s: list[float] = []
         self._actual_v_left: list[float] = []
         self._actual_v_right: list[float] = []
@@ -316,7 +317,7 @@ class CoordinateTab(ttk.Frame):
     def _world_to_model(self, pt: tuple[float, float]) -> tuple[float, float]:
         cx, cy = self._center()
         px_per_m = 1.0 / self._meters_per_px()
-        return (cx + pt[0] * px_per_m, cy - pt[1] * px_per_m)
+        return (cx - pt[0] * px_per_m, cy - pt[1] * px_per_m)
 
     def set_geometry(self, a1_cm: float, a2_cm: float) -> None:
         self._a1_cm = max(a1_cm, 0.0)
@@ -327,6 +328,7 @@ class CoordinateTab(ttk.Frame):
         self._speed_map = cfg
         self._track_circumference_m = cfg.track_circumference_m
         self._update_pwm_display()
+        self._refresh_expected_from_commands()
 
     def get_state(self) -> dict:
         nodes = []
@@ -558,7 +560,11 @@ class CoordinateTab(ttk.Frame):
         self._profile_v_left = profile.v_left
         self._profile_v_right = profile.v_right
         self._expected_dt_s = params.dt
-        self._build_expected_poses()
+        if not self._expected_running:
+            self.prepare_expected()
+        if self._expected_running:
+            self._expected_start_ms = now_ms_monotonic()
+            self._expected_world = self._expected_poses[0] if self._expected_poses else None
         self._draw_rpm()
 
     def _read_float(self, var: tk.StringVar, default: float) -> float:
@@ -638,6 +644,15 @@ class CoordinateTab(ttk.Frame):
         if self._hover_s is not None:
             self._draw_rpm_hover(self._hover_s)
 
+    def refresh_profile(self) -> None:
+        self._recompute_profile()
+
+    def prepare_expected(self) -> list[tuple[int, int]]:
+        self._expected_cmds = self.get_command_sequence()
+        self._expected_dt_s = self._read_float(self._dt_var, self._dt_ms) / 1000.0
+        self._build_expected_poses()
+        return self._expected_cmds
+
     def start_expected(self, start_ms: int) -> None:
         if not self._expected_poses:
             return
@@ -666,11 +681,19 @@ class CoordinateTab(ttk.Frame):
 
     def _build_expected_poses(self) -> None:
         self._expected_poses = []
-        if not self._profile_v_left or self._expected_dt_s <= 0.0:
+        if not self._expected_cmds or self._expected_dt_s <= 0.0:
             return
         pose = (0.0, 0.0, 0.0)
         self._expected_poses.append(pose)
-        for v_left, v_right in zip(self._profile_v_left, self._profile_v_right):
+        points = [
+            SpeedMapPoint(self._speed_map.pwm_1, self._speed_map.speed_1),
+            SpeedMapPoint(self._speed_map.pwm_2, self._speed_map.speed_2),
+            SpeedMapPoint(self._speed_map.pwm_3, self._speed_map.speed_3),
+        ]
+        for left_pwm, right_pwm in self._expected_cmds:
+            # Command swap is applied when sending to hardware; simulate physical tracks.
+            v_left = pwm_to_speed(right_pwm, points)
+            v_right = pwm_to_speed(left_pwm, points)
             pose = self._integrate_pose(pose, v_left, v_right, self._expected_dt_s)
             self._expected_poses.append(pose)
 
@@ -692,9 +715,9 @@ class CoordinateTab(ttk.Frame):
             y += v * dt * math.cos(theta)
         else:
             dtheta = w * dt
-            R = -v / w
-            x += R * (math.cos(theta + dtheta) - math.cos(theta))
-            y += R * (math.sin(theta) - math.sin(theta + dtheta))
+            R = v / w
+            x += R * (math.cos(theta) - math.cos(theta + dtheta))
+            y += R * (math.sin(theta + dtheta) - math.sin(theta))
             theta += dtheta
         return (x, y, theta)
 
@@ -1027,6 +1050,7 @@ class CoordinateTab(ttk.Frame):
             return
         self._set_pwm_from_speeds(speeds[1], speeds[2])
         self._notify_state_change()
+        self._refresh_expected_from_commands()
 
     def _nearest_sample_by_s(self, s: float) -> Optional[dict[str, float]]:
         if not self._samples:
@@ -1079,6 +1103,11 @@ class CoordinateTab(ttk.Frame):
             return
         if self.on_state_change:
             self.on_state_change()
+
+    def _refresh_expected_from_commands(self) -> None:
+        if self._expected_running:
+            return
+        self.prepare_expected()
 
     def _curvature_radii(self, sample: dict[str, float]) -> dict[str, Optional[float]]:
         segments = self._segments()
