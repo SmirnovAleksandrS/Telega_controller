@@ -619,18 +619,18 @@ class CoordinateTab(ttk.Frame):
             c.create_text(left - 2, gy, text=f"{v_val:.2f}", anchor="e", fill="#000000")
         c.create_text(right, bottom + 2, text="Distance (m)", anchor="ne", fill="#000000")
 
-        def draw_series(values: list[float], color: str) -> None:
+        def draw_series(s_axis: list[float], values: list[float], color: str) -> None:
             pts = []
-            for s_val, v in zip(self._profile_s, values):
+            for s_val, v in zip(s_axis, values):
                 pts.extend([x_of(s_val), y_of(v)])
-            if pts:
+            if len(pts) >= 4:
                 c.create_line(*pts, fill=color, width=2)
 
-        draw_series(self._profile_v_left, "#cc0000")
-        draw_series(self._profile_v_right, "#0044cc")
+        draw_series(self._profile_s, self._profile_v_left, "#cc0000")
+        draw_series(self._profile_s, self._profile_v_right, "#0044cc")
         if self._actual_s:
-            draw_series(self._actual_v_left, "#cc6666")
-            draw_series(self._actual_v_right, "#6688cc")
+            draw_series(self._actual_s, self._actual_v_left, "#cc6666")
+            draw_series(self._actual_s, self._actual_v_right, "#6688cc")
         c.create_text(right - 5, top, text="L speed  R speed", anchor="ne", fill="#000000")
 
         self._rpm_view = {

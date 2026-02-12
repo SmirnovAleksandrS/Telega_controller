@@ -23,6 +23,8 @@ Log format: .log (JSON Lines)
   - saves parsed messages to .log as JSONL, includes PC receive time and time model snapshot
 
 ## Unreleased
+- UART stability: rework serial open/close lifecycle with thread-safe stop/join, per-connection parser/stop event, TX queue flush on reconnect, and safer serial timeouts/cancel_read/cancel_write handling.
+- Shutdown reliability: bind window close to unified app shutdown; ensure graceful UART/logger cleanup on terminal `Ctrl+C` and GUI exit.
 - Coordinate tab: grid canvas with scale selector, Bezier curve editor (anchors/handles), and minimum turning radius check (green/red).
 - Coordinate tab: delete anchor on double-click; show left/right track curves; hover shows curvature radii for center and tracks.
 - Physics menu: geometry parameters (A1/A2 in cm) persisted and applied to track offsets.

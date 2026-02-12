@@ -48,6 +48,7 @@ class VirtualControllerApp:
         self.root.title("Virtual controller")
         self.root.configure(bg=PANEL_BG)
         self.root.minsize(980, 560)
+        self._is_shutting_down = False
 
         self.worker = SerialWorker()
         self.worker.on_send = self._log_tx_raw
@@ -90,12 +91,16 @@ class VirtualControllerApp:
         self._last_mcu_ts_u32: Optional[int] = None
 
         self._build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_exit)
 
         # periodic queue polling
         self.root.after(20, self._poll_rx)
 
     def run(self) -> None:
-        self.root.mainloop()
+        try:
+            self.root.mainloop()
+        finally:
+            self.shutdown()
 
     # ---------------- UI ----------------
 
@@ -265,9 +270,12 @@ class VirtualControllerApp:
         if dlg.result:
             port, baud = dlg.result
             self.worker.open(port, baud)
-            self._save_settings()
-            # Start initial sync when port opens
-            self._begin_initial_sync()
+            if self.worker.is_open:
+                self._save_settings()
+                # Start initial sync when port opens
+                self._begin_initial_sync()
+            else:
+                messagebox.showerror("COM Settings", "Failed to open selected port")
         self._refresh_connect_btn()
 
     def _open_deviation_settings(self) -> None:
@@ -296,11 +304,24 @@ class VirtualControllerApp:
             self._save_settings()
 
     def _on_exit(self) -> None:
+        self.shutdown()
+
+    def shutdown(self) -> None:
+        if self._is_shutting_down:
+            return
+        self._is_shutting_down = True
         try:
             self.worker.close()
         finally:
             self.logger.stop()
-            self.root.destroy()
+            try:
+                self.root.quit()
+            except Exception:
+                pass
+            try:
+                self.root.destroy()
+            except Exception:
+                pass
 
     def _toggle_connect(self) -> None:
         if self.worker.is_open:
@@ -312,6 +333,15 @@ class VirtualControllerApp:
             return
 
         if self.worker.port:
+            ports = set(SerialWorker.list_ports())
+            if self.worker.port not in ports:
+                messagebox.showerror(
+                    "COM Settings",
+                    f"Saved port '{self.worker.port}' is not available.\nSelect a port in COM Settings.",
+                )
+                self._open_com_settings()
+                self._refresh_connect_btn()
+                return
             self.worker.open(self.worker.port, self.worker.baud)
             if self.worker.is_open:
                 self._begin_initial_sync()
@@ -540,6 +570,8 @@ class VirtualControllerApp:
     # ---------------- RX processing & UI updates ----------------
 
     def _poll_rx(self) -> None:
+        if self._is_shutting_down:
+            return
         now_ms = now_ms_monotonic()
 
         # periodic tasks
@@ -607,7 +639,8 @@ class VirtualControllerApp:
                     pass
 
         self._update_mcu_time_label()
-        self.root.after(20, self._poll_rx)
+        if not self._is_shutting_down:
+            self.root.after(20, self._poll_rx)
 
     # ---------------- Settings persistence ----------------
 
