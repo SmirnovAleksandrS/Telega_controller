@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0" version="29.4.0">
   <diagram id="C5RBs43oDa-KdzZeNtuy" name="Page-1">
-    <mxGraphModel dx="2253" dy="799" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="2015" dy="666" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="WIyWlLk6GJQsqaUBKTNV-0" />
         <mxCell id="WIyWlLk6GJQsqaUBKTNV-1" parent="WIyWlLk6GJQsqaUBKTNV-0" />
@@ -150,36 +150,23 @@
         <mxCell id="HWUGLB4szMs_9ZeI7iKX-32" parent="HWUGLB4szMs_9ZeI7iKX-8" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="err processing();" vertex="1">
           <mxGeometry height="30" width="200" y="310" as="geometry" />
         </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-18" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" source="HWUGLB4szMs_9ZeI7iKX-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="HWUGLB4szMs_9ZeI7iKX-8">
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-18" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="HWUGLB4szMs_9ZeI7iKX-8">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1220" y="160" />
               <mxPoint x="1075" y="160" />
             </Array>
+            <mxPoint x="1220" y="130" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-45" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" source="HWUGLB4szMs_9ZeI7iKX-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="HWUGLB4szMs_9ZeI7iKX-33">
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-45" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="HWUGLB4szMs_9ZeI7iKX-33">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1220" y="160" />
               <mxPoint x="1485" y="160" />
             </Array>
+            <mxPoint x="1220" y="130" as="sourcePoint" />
           </mxGeometry>
-        </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-80" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" source="HWUGLB4szMs_9ZeI7iKX-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="HWUGLB4szMs_9ZeI7iKX-75">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-14" parent="WIyWlLk6GJQsqaUBKTNV-1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="ICallback" vertex="1">
-          <mxGeometry height="120" width="210" x="1120" y="10" as="geometry" />
-        </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-15" parent="HWUGLB4szMs_9ZeI7iKX-14" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="void callBack(Data dat);" vertex="1">
-          <mxGeometry height="30" width="210" y="30" as="geometry" />
-        </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-82" parent="HWUGLB4szMs_9ZeI7iKX-14" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="ICallback* NextPoint;" vertex="1">
-          <mxGeometry height="30" width="210" y="60" as="geometry" />
-        </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-83" parent="HWUGLB4szMs_9ZeI7iKX-14" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1">
-          <mxGeometry height="30" width="210" y="90" as="geometry" />
         </mxCell>
         <mxCell id="HWUGLB4szMs_9ZeI7iKX-33" parent="WIyWlLk6GJQsqaUBKTNV-1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="Integrator" vertex="1">
           <mxGeometry height="340" width="210" x="1380" y="210" as="geometry" />
@@ -236,7 +223,7 @@
         </mxCell>
         <mxCell id="HWUGLB4szMs_9ZeI7iKX-48" connectable="0" parent="HWUGLB4szMs_9ZeI7iKX-46" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];rotation=-45;" value="Связь по колбеку" vertex="1">
           <mxGeometry relative="1" x="-0.4644" as="geometry">
-            <mxPoint x="14" y="-14" as="offset" />
+            <mxPoint x="6" y="-14" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="HWUGLB4szMs_9ZeI7iKX-50" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" source="HWUGLB4szMs_9ZeI7iKX-29" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;dashPattern=8 8;" target="HWUGLB4szMs_9ZeI7iKX-35" value="">
@@ -255,8 +242,8 @@
             <mxPoint x="11" y="-2" as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="HWUGLB4szMs_9ZeI7iKX-53" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Передача данных&lt;/h1&gt;&lt;p&gt;При сборки проекта в мейне надо настроить калбеки. По идее при получении данных класс юарта дергает по указателю привязанный к нему объект по калбеку из интерфейсного класса. Аналогично делает и миксер.&lt;/p&gt;" vertex="1">
-          <mxGeometry height="120" width="270" x="640" y="60" as="geometry" />
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-53" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Передача данных&lt;/h1&gt;&lt;p&gt;Всю передачу данных решено перевести на рельсы подписчик/публицист. В таком случае классы-подбисчики будут активироваться только тогда, когда кто-то из публицистов что-то напостит. В том числе постить могут и часы.&lt;/p&gt;" vertex="1">
+          <mxGeometry height="120" width="270" x="590" y="40" as="geometry" />
         </mxCell>
         <mxCell id="HWUGLB4szMs_9ZeI7iKX-55" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Структуры данных&lt;/h1&gt;&lt;p&gt;Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.&lt;/p&gt;" vertex="1">
           <mxGeometry height="120" width="260" x="-340" y="60" as="geometry" />
@@ -308,6 +295,24 @@
         </mxCell>
         <mxCell id="HWUGLB4szMs_9ZeI7iKX-78" parent="HWUGLB4szMs_9ZeI7iKX-75" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="Item 3" vertex="1">
           <mxGeometry height="30" width="140" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-85" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;Если передача данных идет с помощью публикаций, как и ивенты, то что делать, если во время обработки данных от датчиков приходит прерывание по времени для выбора следующей точки? Что для нас приоритетнее, обновить данные или выбрать куда ехать? Тут наверное приоритетнее данные, но вопрос дискусионный.&amp;nbsp;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;В целом непонятно, как правильно вставить прямые прерывания-ивенты в цепочку обычных заданий.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Возможно стоит жестко зафиксировать только одну цепочку колбеков по данным, а все остальные подписки и прочее делать вне прерываний в свободное время.&amp;nbsp;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="180" width="330" x="640" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-87" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Тут должно быть ограничение на максимальную частоту, иначе если мы получили данные от иму одновременно, но послали их как 3 команды, то по сути мы получили данные ровно в одно время, но обработали их трижды, заставив их устаревать и перегружать проц на пересылке сообщений и интеграторе." vertex="1">
+          <mxGeometry height="120" width="190" x="780" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-88" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Лучше всего объединять пакеты с похожими временными метками." vertex="1">
+          <mxGeometry height="70" width="120" x="850" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-89" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="В сущности это определяет не толлько структуру данных, но и последовательность выполнения, а значит и операционную систему. Надо переходить с железа на RTOS" vertex="1">
+          <mxGeometry height="30" width="209" x="1181" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-90" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;Система в большей части не время-обоснованная, а данно-зависимая. Это значит, что если у нас пришло время принимать решщение, но мы имеем только устаревшие данные, то корректно принять решение мы не можем. Значит мы можем принимать решение только тогда, когда у нас сформировался пул критических данных и пришло время для принятия решения.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;При этом есть обходной путь. Если время еще не пришло, но критические параметры резко изменились, то стоит что-то с этим делать и принимать решения.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="140" width="320" x="810" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="HWUGLB4szMs_9ZeI7iKX-91" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;Это можно формализовать так. Мы можем принять решение только тогда, когда функция состояния в достаточной степени определена.&amp;nbsp;&lt;/div&gt;&lt;div&gt;Например параметры положения и скорости определяют ее на 80 процентов и этого более чем достаточно для приняти решения. Остальные же 20 отвечают за вспомогательные параметры.&amp;nbsp;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;При этом если мы не получили какие-то данные например о положении, но наши прочие данные в достаточной мере формализовали систему, то мы можем принимать решение.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Например мы летим на огромной скорости со склона. Мы знаем что у нас большая скорость, перед нами дерево, но мы не понимаем точно, где мы находимся. С одной стороны, у нас нет одного из критических параметров - положения, но есть не критический - объект в кадре. Казалось бы надо ждать пока узнаем положение, но ситуация достаочно определена, чтобы принимать решение рулить в сторону от дерева.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="440" x="820" y="1250" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
