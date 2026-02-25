@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0" version="29.5.2">
   <diagram id="C5RBs43oDa-KdzZeNtuy" name="Page-1">
-    <mxGraphModel dx="2505" dy="940" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1846" dy="571" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="WIyWlLk6GJQsqaUBKTNV-0" />
         <mxCell id="WIyWlLk6GJQsqaUBKTNV-1" parent="WIyWlLk6GJQsqaUBKTNV-0" />
@@ -190,16 +190,19 @@
           <mxGeometry height="70" width="120" x="560" y="360" as="geometry" />
         </mxCell>
         <mxCell id="z6ga2H0S11q9YghqqX8V-0" parent="WIyWlLk6GJQsqaUBKTNV-1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="Topic" vertex="1">
-          <mxGeometry height="120" width="190" x="560" y="547" as="geometry" />
+          <mxGeometry height="150" width="190" x="560" y="547" as="geometry" />
         </mxCell>
-        <mxCell id="z6ga2H0S11q9YghqqX8V-1" parent="z6ga2H0S11q9YghqqX8V-0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="Subscriber* massivSubscribers;" vertex="1">
+        <mxCell id="z6ga2H0S11q9YghqqX8V-57" parent="z6ga2H0S11q9YghqqX8V-0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="char[] TopicName;" vertex="1">
           <mxGeometry height="30" width="190" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="z6ga2H0S11q9YghqqX8V-2" parent="z6ga2H0S11q9YghqqX8V-0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="uint8_t priority" vertex="1">
+        <mxCell id="z6ga2H0S11q9YghqqX8V-1" parent="z6ga2H0S11q9YghqqX8V-0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="Subscriber* massivSubscribers;" vertex="1">
           <mxGeometry height="30" width="190" y="60" as="geometry" />
         </mxCell>
-        <mxCell id="z6ga2H0S11q9YghqqX8V-3" parent="z6ga2H0S11q9YghqqX8V-0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="Data* data" vertex="1">
+        <mxCell id="z6ga2H0S11q9YghqqX8V-2" parent="z6ga2H0S11q9YghqqX8V-0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="uint8_t priority" vertex="1">
           <mxGeometry height="30" width="190" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="z6ga2H0S11q9YghqqX8V-3" parent="z6ga2H0S11q9YghqqX8V-0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" value="Data* data" vertex="1">
+          <mxGeometry height="30" width="190" y="120" as="geometry" />
         </mxCell>
         <mxCell id="z6ga2H0S11q9YghqqX8V-4" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Это топик" vertex="1">
           <mxGeometry height="30" width="60" x="610" y="502" as="geometry" />
@@ -226,7 +229,7 @@
           <mxGeometry height="30" width="450" x="760" y="970" as="geometry" />
         </mxCell>
         <mxCell id="z6ga2H0S11q9YghqqX8V-15" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Это исполняющий узел сети" vertex="1">
-          <mxGeometry height="30" width="110" x="490" y="900" as="geometry" />
+          <mxGeometry height="30" width="110" x="570" y="900" as="geometry" />
         </mxCell>
         <mxCell id="z6ga2H0S11q9YghqqX8V-17" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" source="z6ga2H0S11q9YghqqX8V-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="z6ga2H0S11q9YghqqX8V-11">
           <mxGeometry relative="1" as="geometry" />
@@ -327,8 +330,8 @@
         <mxCell id="z6ga2H0S11q9YghqqX8V-51" parent="WIyWlLk6GJQsqaUBKTNV-1" style="shape=internalStorage;whiteSpace=wrap;html=1;backgroundOutline=1;" value="Блок принятия решений" vertex="1">
           <mxGeometry height="140" width="130" x="1950" y="220" as="geometry" />
         </mxCell>
-        <mxCell id="z6ga2H0S11q9YghqqX8V-52" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Блок принятия решений&lt;/h1&gt;Это здоровенная штука, которая должны крутиться в отдельном потоке, который просыпается только после команды триггера. При этом поток должен быть весьма приоритетный, чтобы его не задушил EventBus" vertex="1">
-          <mxGeometry height="120" width="310" x="2110" y="220" as="geometry" />
+        <mxCell id="z6ga2H0S11q9YghqqX8V-52" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Блок принятия решений&lt;/h1&gt;&lt;div&gt;Это здоровенная штука, которая должны крутиться в отдельном потоке, который просыпается только после команды триггера. При этом поток должен быть весьма приоритетный, чтобы его не задушил EventBus.&lt;/div&gt;&lt;div&gt;Реализовывать его будем через паттерн Строитель, чтобы можно было подкинуть и разные ьлоки и разные их реализации.&lt;/div&gt;&lt;div&gt;Это даст возможность использовать разные алгоритмы в разных условиях например.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="210" width="310" x="2110" y="220" as="geometry" />
         </mxCell>
         <mxCell id="z6ga2H0S11q9YghqqX8V-54" parent="WIyWlLk6GJQsqaUBKTNV-1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Некоторые пространные размышления&lt;/h1&gt;&lt;p&gt;Вообще при грамотной организации временных меток можно отвязаться от временной части. Т.е. не будет критично то, насколько быстро у нас крутиться EventBus, можно в целом все будет раскидать по отдельным потокам, интегрирование тогда будет чисто по временным меткам.&lt;/p&gt;" vertex="1">
           <mxGeometry height="120" width="430" x="1270" y="700" as="geometry" />
