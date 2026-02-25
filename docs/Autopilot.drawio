@@ -1,6 +1,6 @@
-<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0" version="29.4.0">
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0" version="29.5.2">
   <diagram name="Page-1" id="IloNXZ2M0G6VFr63dj-L">
-    <mxGraphModel dx="1426" dy="1899" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="920" dy="1615" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -153,7 +153,7 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="tmH8uuI_ZD9xydNCfBd3-39" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Перевод в скорости (угловую и радиальную)" vertex="1">
-          <mxGeometry height="70" width="170" x="888.5" y="990" as="geometry" />
+          <mxGeometry height="70" width="170" x="888.5" y="1000" as="geometry" />
         </mxCell>
         <mxCell id="tmH8uuI_ZD9xydNCfBd3-47" edge="1" parent="1" source="tmH8uuI_ZD9xydNCfBd3-43" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="tmH8uuI_ZD9xydNCfBd3-46" value="">
           <mxGeometry relative="1" as="geometry" />
@@ -314,6 +314,21 @@
           <mxGeometry relative="1" x="-0.3714" as="geometry">
             <mxPoint x="8" as="offset" />
           </mxGeometry>
+        </mxCell>
+        <mxCell id="9YLpKuGwbNNAr8Cx2zKw-1" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;Next Point&lt;/div&gt;" vertex="1">
+          <mxGeometry height="30" width="60" x="990" y="820" as="geometry" />
+        </mxCell>
+        <mxCell id="9YLpKuGwbNNAr8Cx2zKw-2" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="k = 1/R" vertex="1">
+          <mxGeometry height="30" width="60" x="980" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="9YLpKuGwbNNAr8Cx2zKw-3" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="V, Om" vertex="1">
+          <mxGeometry height="30" width="60" x="980" y="1070" as="geometry" />
+        </mxCell>
+        <mxCell id="9YLpKuGwbNNAr8Cx2zKw-4" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="V_real, Om_real" vertex="1">
+          <mxGeometry height="30" width="60" x="980" y="1180" as="geometry" />
+        </mxCell>
+        <mxCell id="9YLpKuGwbNNAr8Cx2zKw-5" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="V1, V2" vertex="1">
+          <mxGeometry height="30" width="60" x="980" y="1289" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
