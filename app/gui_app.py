@@ -57,6 +57,7 @@ class VirtualControllerApp:
         self.dev_cfg = DeviationConfig()
         self.geom_cfg = GeometryConfig()
         self.speed_cfg = SpeedMapConfig()
+        self._test_mode_enabled = False
         self._settings_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "app_settings.json"))
         self._load_settings()
 
@@ -82,8 +83,6 @@ class VirtualControllerApp:
         self._kill_active = False
         self._kill_tick_ms = 200
         self._coord_running = False
-        self._coord_cmds: list[tuple[int, int]] = []
-        self._coord_idx = 0
         self._coord_tick_ms = 10
 
         # Radio quality (simple heuristic)
@@ -168,6 +167,14 @@ class VirtualControllerApp:
 
         self.connect_btn = ttk.Button(top, text="Connect", command=self._toggle_connect)
         self.connect_btn.pack(side="left")
+        self._test_mode_var = tk.BooleanVar(value=self._test_mode_enabled)
+        self.test_mode_chk = ttk.Checkbutton(
+            top,
+            text="Test mode",
+            variable=self._test_mode_var,
+            command=self._on_test_mode_toggle,
+        )
+        self.test_mode_chk.pack(side="left", padx=(8, 0))
 
         self.log_status_var = tk.StringVar(value="Log Stopped")
         self.log_status_lbl = ttk.Label(top, textvariable=self.log_status_var)
@@ -329,6 +336,7 @@ class VirtualControllerApp:
             if self._coord_running:
                 self._coord_running = False
                 self.coord_tab.set_running(False)
+                self.coord_tab.stop_expected()
             self._refresh_connect_btn()
             return
 
@@ -357,6 +365,15 @@ class VirtualControllerApp:
         else:
             self.connect_btn.configure(text="Connect")
 
+    def _is_test_mode(self) -> bool:
+        if hasattr(self, "_test_mode_var"):
+            return bool(self._test_mode_var.get())
+        return bool(self._test_mode_enabled)
+
+    def _on_test_mode_toggle(self) -> None:
+        self._test_mode_enabled = self._is_test_mode()
+        self._save_settings()
+
     def _apply_kill_style(self) -> None:
         style = ttk.Style(self.root)
         style.configure("KillOff.TButton", foreground="#ffffff", background="#cc0000", padding=8)
@@ -371,26 +388,26 @@ class VirtualControllerApp:
             self._update_kill_indicator()
 
     def _on_coord_start(self) -> None:
-        send_enabled = self.worker.is_open
+        if not self.worker.is_open and not self._is_test_mode():
+            messagebox.showerror("Coordinate", "Connect COM port before start")
+            return
         if self._kill_active:
             messagebox.showerror("Coordinate", "Kill switch is active")
             return
         if self._coord_running:
             return
         self.coord_tab.refresh_profile()
-        self._begin_initial_sync()
-        self._coord_cmds = self.coord_tab.prepare_expected()
-        if not self._coord_cmds:
-            messagebox.showerror("Coordinate", "No trajectory commands to send")
+        if self.worker.is_open and not self._is_test_mode():
+            self._begin_initial_sync()
+        if not self.coord_tab.start_controller():
+            messagebox.showerror("Coordinate", "No valid trajectory for controller")
             return
-        self._coord_idx = 0
         self._coord_tick_ms = max(1, self.coord_tab.get_time_quantum_ms())
-        self._coord_running = send_enabled
+        self._coord_running = True
         self.coord_tab.set_running(True)
         self.coord_tab.reset_actual_trace()
         self.coord_tab.start_expected(now_ms_monotonic())
-        if send_enabled:
-            self._coord_send_tick()
+        self._coord_send_tick()
 
     def _on_coord_stop(self) -> None:
         if not self._coord_running:
@@ -404,16 +421,27 @@ class VirtualControllerApp:
     def _coord_send_tick(self) -> None:
         if not self._coord_running or self._kill_active:
             return
-        if self._coord_idx >= len(self._coord_cmds):
+        test_mode = self._is_test_mode()
+        if not self.worker.is_open and not test_mode:
             self._coord_running = False
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             return
-        left_cmd, right_cmd = self._coord_cmds[self._coord_idx]
-        self._coord_idx += 1
-        # Swap tracks for coordinate mode (per hardware wiring).
-        payload = build_control(now_ms_monotonic(), right_cmd, left_cmd, self._coord_tick_ms)
-        self.worker.send(payload)
+        dt_s = max(1, self._coord_tick_ms) / 1000.0
+        cmd = self.coord_tab.step_controller(dt_s, force_internal_pose=test_mode)
+        if self.coord_tab.controller_finished():
+            self._coord_running = False
+            self.coord_tab.set_running(False)
+            self.coord_tab.stop_expected()
+            return
+        if cmd is None:
+            left_cmd, right_cmd = self._manual_neutral, self._manual_neutral
+        else:
+            left_cmd, right_cmd = cmd
+        if self.worker.is_open and not test_mode:
+            # Swap tracks for coordinate mode (per hardware wiring).
+            payload = build_control(now_ms_monotonic(), right_cmd, left_cmd, self._coord_tick_ms)
+            self.worker.send(payload)
         self.root.after(self._coord_tick_ms, self._coord_send_tick)
 
     # ---------------- Control logic ----------------
@@ -706,6 +734,7 @@ class VirtualControllerApp:
             "left_linear": float(joy.get("left_linear", self._joystick_cfg["left_linear"])),
             "right_linear": float(joy.get("right_linear", self._joystick_cfg["right_linear"])),
         }
+        self._test_mode_enabled = bool(data.get("test_mode", self._test_mode_enabled))
 
         coord = data.get("coordinate", {})
         if isinstance(coord, dict):
@@ -764,6 +793,7 @@ class VirtualControllerApp:
                 "left_linear": self._joystick_cfg["left_linear"],
                 "right_linear": self._joystick_cfg["right_linear"],
             },
+            "test_mode": self._is_test_mode(),
             "coordinate": coord_state,
         }
         try:

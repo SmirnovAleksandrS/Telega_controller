@@ -7,14 +7,22 @@ Coordinate tab:
 
 from __future__ import annotations
 
+import os
 import math
 from dataclasses import dataclass
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 from typing import Optional, Callable
 
+try:
+    from PIL import Image, ImageTk, UnidentifiedImageError
+except Exception:  # pragma: no cover - optional dependency guard
+    Image = None
+    ImageTk = None
+    UnidentifiedImageError = OSError
+
 from app.styles import PANEL_BG, COLOR_GREEN, COLOR_RED
-from utils.timebase import now_ms_monotonic
+from utils.timebase import now_ms_monotonic, u32_diff_mod
 from utils.bezier_math import (
     cubic_point,
     cubic_derivative,
@@ -23,6 +31,12 @@ from utils.bezier_math import (
 )
 from utils.motion_math import MotionParams, build_path_samples, plan_profile
 from utils.speed_map import SpeedMapPoint, speed_to_pwm, pwm_to_speed
+from utils.pure_pursuit_controller import (
+    ControllerConfig,
+    Pose2D as ControllerPose2D,
+    PurePursuitController,
+    SimplePolylineTrack,
+)
 from app.dialogs import SpeedMapConfig
 
 
@@ -56,6 +70,16 @@ class CoordinateTab(ttk.Frame):
         self._view_pan = (0.0, 0.0)
         self._pan_start: Optional[tuple[float, float]] = None
         self._pan_origin: Optional[tuple[float, float]] = None
+        self._map_path = ""
+        self._map_image = None
+        self._map_image_tk = None
+        self._map_image_cache_size: Optional[tuple[int, int, int]] = None
+        self._map_center = self._center()
+        self._map_drag_start: Optional[tuple[float, float]] = None
+        self._map_drag_origin: Optional[tuple[float, float]] = None
+        self._map_drag_moved = False
+        self._map_drag_threshold_px = 3.0
+        self._map_click_add_point: Optional[tuple[float, float]] = None
 
         self._a1_cm = 20.0
         self._a2_cm = 20.0
@@ -68,6 +92,10 @@ class CoordinateTab(ttk.Frame):
         self._pwm_right = 1500.0
         self._track_circumference_m = 1.0
         self._editable = True
+        self._lookahead_min_m = 0.25
+        self._lookahead_max_m = 1.50
+        self._lookahead_k = 0.60
+        self._kappa_slowdown = 1.50
 
         self._log_max_lines = 500
         self._log_lines = 0
@@ -87,8 +115,15 @@ class CoordinateTab(ttk.Frame):
         self._right_shift_var = tk.StringVar(value="0")
         self._left_linear_var = tk.StringVar(value="1")
         self._right_linear_var = tk.StringVar(value="1")
+        self._map_file_var = tk.StringVar(value="")
+        self._map_image_scale_var = tk.DoubleVar(value=1.0)
+        self._map_image_scale_label_var = tk.StringVar(value="1.00x")
+        self._map_rotation_var = tk.DoubleVar(value=0.0)
+        self._map_rotation_label_var = tk.StringVar(value="0.0 deg")
+        self._pose_source_var = tk.StringVar(value="Internal integrator")
 
         self._drag_target: Optional[tuple[str, int]] = None
+        self._state_notify_after_id: str | None = None
 
         self._build()
         self._init_nodes()
@@ -138,6 +173,48 @@ class CoordinateTab(ttk.Frame):
         )
         self.scale_box.pack(side="left", padx=(6, 0))
         self.scale_box.bind("<<ComboboxSelected>>", lambda _e: self._redraw())
+
+        ttk.Label(scale_row, text="Map").pack(side="left", padx=(12, 0))
+        self.map_file_entry = ttk.Entry(
+            scale_row,
+            textvariable=self._map_file_var,
+            width=26,
+            state="readonly",
+        )
+        self.map_file_entry.pack(side="left", padx=(6, 0))
+        ttk.Button(scale_row, text="...", width=3, command=self._choose_map_file).pack(side="left", padx=(4, 0))
+
+        map_scale_row = ttk.Frame(left)
+        map_scale_row.grid(row=2, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(map_scale_row, text="Map scale").pack(side="left")
+        self.map_scale_slider = ttk.Scale(
+            map_scale_row,
+            from_=0.1,
+            to=6.0,
+            variable=self._map_image_scale_var,
+            orient="horizontal",
+            length=190,
+            command=self._on_map_scale_change,
+        )
+        self.map_scale_slider.pack(side="left", padx=(8, 6))
+        ttk.Label(map_scale_row, textvariable=self._map_image_scale_label_var, width=6).pack(side="left")
+        self.map_scale_slider.state(["disabled"])
+
+        map_rot_row = ttk.Frame(left)
+        map_rot_row.grid(row=3, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(map_rot_row, text="Map rotation").pack(side="left")
+        self.map_rot_slider = ttk.Scale(
+            map_rot_row,
+            from_=0.0,
+            to=360.0,
+            variable=self._map_rotation_var,
+            orient="horizontal",
+            length=190,
+            command=self._on_map_rotation_change,
+        )
+        self.map_rot_slider.pack(side="left", padx=(8, 6))
+        ttk.Label(map_rot_row, textvariable=self._map_rotation_label_var, width=6).pack(side="left")
+        self.map_rot_slider.state(["disabled"])
 
         right = ttk.Frame(self)
         right.grid(row=0, column=1, sticky="nw", padx=(12, 0))
@@ -205,6 +282,19 @@ class CoordinateTab(ttk.Frame):
         self.start_btn.pack(side="left", padx=(0, 10))
         self.stop_btn.pack(side="left")
 
+        pose_row = ttk.Frame(right)
+        pose_row.grid(row=7, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(pose_row, text="Pose input").pack(side="left")
+        self.pose_source_box = ttk.Combobox(
+            pose_row,
+            textvariable=self._pose_source_var,
+            values=["Internal integrator", "Trolley data"],
+            width=20,
+            state="readonly",
+        )
+        self.pose_source_box.pack(side="left", padx=(8, 0))
+        self.pose_source_box.bind("<<ComboboxSelected>>", lambda _e: self._notify_state_change())
+
         self.bottom_nb = ttk.Notebook(self)
         self.bottom_nb.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
         self._build_log_tab()
@@ -262,6 +352,8 @@ class CoordinateTab(ttk.Frame):
         self._expected_dt_s: float = 0.0
         self._expected_running = False
         self._expected_cmds: list[tuple[int, int]] = []
+        self._controller: Optional[PurePursuitController] = None
+        self._controller_track: Optional[SimplePolylineTrack] = None
         self._actual_s: list[float] = []
         self._actual_v_left: list[float] = []
         self._actual_v_right: list[float] = []
@@ -314,10 +406,74 @@ class CoordinateTab(ttk.Frame):
     def _meters_to_px(self, meters: float) -> float:
         return meters / self._meters_per_px()
 
+    def _map_scale_factor(self) -> float:
+        try:
+            value = float(self._map_image_scale_var.get())
+        except Exception:
+            value = 1.0
+        return max(0.1, min(6.0, value))
+
+    def _map_rotation_deg(self) -> float:
+        try:
+            value = float(self._map_rotation_var.get())
+        except Exception:
+            value = 0.0
+        return max(0.0, min(360.0, value))
+
+    def _map_model_size(self) -> Optional[tuple[float, float]]:
+        if self._map_image is None:
+            return None
+        scale = self._map_scale_factor()
+        return (float(self._map_image.width) * scale, float(self._map_image.height) * scale)
+
+    def _map_model_rect(self) -> Optional[tuple[float, float, float, float]]:
+        size = self._map_model_size()
+        if size is None:
+            return None
+        cx, cy = self._map_center
+        half_w = size[0] * 0.5
+        half_h = size[1] * 0.5
+        return (cx - half_w, cy - half_h, cx + half_w, cy + half_h)
+
+    def _map_view_rect(self) -> Optional[tuple[float, float, float, float]]:
+        model_size = self._map_model_size()
+        if model_size is None:
+            return None
+        w = model_size[0] * self._view_scale
+        h = model_size[1] * self._view_scale
+        if w <= 0.0 or h <= 0.0:
+            return None
+        angle_rad = math.radians(self._map_rotation_deg())
+        cos_a = abs(math.cos(angle_rad))
+        sin_a = abs(math.sin(angle_rad))
+        box_w = w * cos_a + h * sin_a
+        box_h = w * sin_a + h * cos_a
+        cx, cy = self._to_view(self._map_center)
+        return (cx - box_w * 0.5, cy - box_h * 0.5, cx + box_w * 0.5, cy + box_h * 0.5)
+
+    def _hit_map(self, x: float, y: float) -> bool:
+        model_size = self._map_model_size()
+        if model_size is None:
+            return False
+        w = model_size[0] * self._view_scale
+        h = model_size[1] * self._view_scale
+        if w <= 0.0 or h <= 0.0:
+            return False
+        cx, cy = self._to_view(self._map_center)
+        dx = x - cx
+        dy = y - cy
+        angle_rad = math.radians(self._map_rotation_deg())
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        # Rotate into image-local coordinates and check against unrotated bounds.
+        lx = dx * cos_a + dy * sin_a
+        ly = -dx * sin_a + dy * cos_a
+        return abs(lx) <= w * 0.5 and abs(ly) <= h * 0.5
+
     def _world_to_model(self, pt: tuple[float, float]) -> tuple[float, float]:
         cx, cy = self._center()
         px_per_m = 1.0 / self._meters_per_px()
-        return (cx - pt[0] * px_per_m, cy - pt[1] * px_per_m)
+        return (cx + pt[0] * px_per_m, cy - pt[1] * px_per_m)
 
     def set_geometry(self, a1_cm: float, a2_cm: float) -> None:
         self._a1_cm = max(a1_cm, 0.0)
@@ -346,6 +502,10 @@ class CoordinateTab(ttk.Frame):
         return {
             "nodes": nodes,
             "scale": self._scale_var.get(),
+            "map_path": self._map_path,
+            "map_scale_factor": self._map_scale_factor(),
+            "map_rotation_deg": self._map_rotation_deg(),
+            "map_center": [self._map_center[0], self._map_center[1]],
             "min_radius_cm": self._min_radius_var.get(),
             "v_cm": self._v_cm_var.get(),
             "accel": self._accel_var.get(),
@@ -355,6 +515,7 @@ class CoordinateTab(ttk.Frame):
             "right_shift": self._right_shift_var.get(),
             "left_linear": self._left_linear_var.get(),
             "right_linear": self._right_linear_var.get(),
+            "pose_source": self._pose_source_var.get(),
             "view_scale": self._view_scale,
             "view_pan": [self._view_pan[0], self._view_pan[1]],
         }
@@ -385,6 +546,8 @@ class CoordinateTab(ttk.Frame):
                     parsed[0].handle_out = (0.0, min(parsed[0].handle_out[1], -5.0))
                 self.nodes = parsed
         self._scale_var.set(data.get("scale", self._scale_var.get()))
+        self._map_image_scale_var.set(data.get("map_scale_factor", self._map_scale_factor()))
+        self._map_rotation_var.set(data.get("map_rotation_deg", self._map_rotation_deg()))
         self._min_radius_var.set(str(data.get("min_radius_cm", self._min_radius_var.get())))
         self._v_cm_var.set(str(data.get("v_cm", self._v_cm_var.get())))
         self._accel_var.set(str(data.get("accel", self._accel_var.get())))
@@ -394,6 +557,10 @@ class CoordinateTab(ttk.Frame):
         self._right_shift_var.set(str(data.get("right_shift", self._right_shift_var.get())))
         self._left_linear_var.set(str(data.get("left_linear", self._left_linear_var.get())))
         self._right_linear_var.set(str(data.get("right_linear", self._right_linear_var.get())))
+        pose_source = str(data.get("pose_source", self._pose_source_var.get()))
+        if pose_source not in ("Internal integrator", "Trolley data"):
+            pose_source = "Internal integrator"
+        self._pose_source_var.set(pose_source)
         try:
             self._view_scale = float(data.get("view_scale", self._view_scale))
         except Exception:
@@ -403,6 +570,26 @@ class CoordinateTab(ttk.Frame):
             self._view_pan = (float(pan[0]), float(pan[1]))
         except Exception:
             pass
+        map_path = data.get("map_path")
+        map_loaded = False
+        if isinstance(map_path, str) and map_path.strip():
+            map_loaded = self._load_map_image(map_path.strip(), recenter=False, show_errors=False)
+            if map_loaded:
+                try:
+                    center = data.get("map_center", [self._map_center[0], self._map_center[1]])
+                    self._map_center = (float(center[0]), float(center[1]))
+                except Exception:
+                    self._map_center = self._center()
+        if not map_loaded:
+            self._map_path = ""
+            self._map_image = None
+            self._map_image_tk = None
+            self._map_image_cache_size = None
+            self._map_file_var.set("")
+            self.map_scale_slider.state(["disabled"])
+            self.map_rot_slider.state(["disabled"])
+        self._map_image_scale_label_var.set(f"{self._map_scale_factor():.2f}x")
+        self._map_rotation_label_var.set(f"{self._map_rotation_deg():.1f} deg")
         self._suspend_state_notify = False
         self._redraw()
 
@@ -411,9 +598,11 @@ class CoordinateTab(ttk.Frame):
         if running:
             self.start_btn.configure(state="disabled")
             self.stop_btn.configure(state="normal")
+            self.pose_source_box.configure(state="disabled")
         else:
             self.start_btn.configure(state="normal")
             self.stop_btn.configure(state="disabled")
+            self.pose_source_box.configure(state="readonly")
 
     def get_command_sequence(self) -> list[tuple[int, int]]:
         if not self._profile_s:
@@ -435,6 +624,86 @@ class CoordinateTab(ttk.Frame):
     def get_time_quantum_ms(self) -> int:
         return int(round(self._read_float(self._dt_var, self._dt_ms)))
 
+    def _controller_cfg(self) -> ControllerConfig:
+        track_width = max((self._a1_cm + self._a2_cm) / 100.0, 1e-6)
+        v_max = max(abs(self._read_float(self._v_cm_var, self._v_cm)), 1e-3)
+        accel = max(self._read_float(self._accel_var, self._accel), 1e-3)
+        decel = max(self._read_float(self._decel_var, self._decel), 1e-3)
+        return ControllerConfig(
+            track_width=track_width,
+            v_cm_max=v_max,
+            a_cm_max=accel,
+            a_track_up=accel,
+            a_track_down=decel,
+            L_min=self._lookahead_min_m,
+            L_max=self._lookahead_max_m,
+            K_L=self._lookahead_k,
+            K_kappa=self._kappa_slowdown,
+            enable_stop_profile=True,
+            a_stop=decel,
+        )
+
+    def _track_world_polyline(self) -> list[tuple[float, float]]:
+        pts: list[tuple[float, float]] = []
+        last: Optional[tuple[float, float]] = None
+        for sample in self._samples:
+            world = self._canvas_to_world((sample["x"], sample["y"]))
+            if last is None or math.hypot(world[0] - last[0], world[1] - last[1]) >= 1e-4:
+                pts.append(world)
+                last = world
+        return pts
+
+    def get_pose_source(self) -> str:
+        value = self._pose_source_var.get().strip()
+        if value == "Trolley data":
+            return "trolley"
+        return "internal"
+
+    def start_controller(self) -> bool:
+        pts = self._track_world_polyline()
+        if len(pts) < 2:
+            return False
+        try:
+            self._controller_track = SimplePolylineTrack(pts)
+        except ValueError:
+            return False
+        self._controller = PurePursuitController(self._controller_cfg(), self._controller_track)
+        self._controller.reset()
+        self._expected_world = (0.0, 0.0, 0.0)
+        self._expected_running = True
+        self._draw_markers()
+        return True
+
+    def controller_finished(self) -> bool:
+        if self._controller is None:
+            return True
+        return self._controller.finished
+
+    def _controller_input_pose_world(self) -> Optional[tuple[float, float, float]]:
+        source = self.get_pose_source()
+        if source == "trolley":
+            return self._actual_world
+        return self._expected_world
+
+    def step_controller(self, dt_s: float, force_internal_pose: bool = False) -> Optional[tuple[int, int]]:
+        if self._controller is None or dt_s <= 0.0:
+            return None
+        if force_internal_pose:
+            src_pose = self._expected_world
+        else:
+            src_pose = self._controller_input_pose_world()
+        if src_pose is None:
+            return None
+        # Internal kinematics uses theta=0 along +Y. Controller uses theta=0 along +X.
+        pose = ControllerPose2D(x=src_pose[0], y=src_pose[1], theta=(math.pi * 0.5 - src_pose[2]))
+        speeds, _dbg = self._controller.update(pose, dt_s, debug=False)
+        if self._expected_world is None:
+            self._expected_world = (0.0, 0.0, 0.0)
+        self._expected_world = self._integrate_pose(self._expected_world, speeds.v_left, speeds.v_right, dt_s)
+        self._set_pwm_from_speeds(speeds.v_left, speeds.v_right)
+        self._draw_markers()
+        return (int(round(self._pwm_left)), int(round(self._pwm_right)))
+
     def reset_actual_trace(self) -> None:
         self._actual_s = []
         self._actual_v_left = []
@@ -448,8 +717,17 @@ class CoordinateTab(ttk.Frame):
     def add_actual_tacho(self, left_rpm: int, right_rpm: int, ts_ms: int) -> None:
         if self._actual_pose is None:
             self._actual_pose = (0.0, 0.0, 0.0)
+        if self._last_actual_ts_ms is None:
+            dt = self._expected_dt_s if self._expected_dt_s > 0.0 else 0.1
+        else:
+            dt_ms = u32_diff_mod(int(ts_ms), int(self._last_actual_ts_ms))
+            if dt_ms <= 0:
+                dt = self._expected_dt_s if self._expected_dt_s > 0.0 else 0.1
+            else:
+                dt = dt_ms / 1000.0
+        # Clamp dt to reject long UI stalls / outlier packets in odometry integration.
+        dt = max(0.005, min(dt, 0.5))
         self._last_actual_ts_ms = ts_ms
-        dt = 0.1
         v_left = (left_rpm / 60.0) * self._track_circumference_m
         v_right = (right_rpm / 60.0) * self._track_circumference_m
         last_s = self._actual_s[-1] if self._actual_s else 0.0
@@ -464,18 +742,62 @@ class CoordinateTab(ttk.Frame):
 
     # ---------------- Drawing ----------------
 
-    def _redraw(self) -> None:
+    def _redraw(self, *, recompute_profile: bool = True, notify_state: bool = True) -> None:
+        self.canvas.delete("map")
         self.canvas.delete("grid")
         self.canvas.delete("curve")
         self.canvas.delete("nodes")
         self.canvas.delete("hover")
         self.rpm_canvas.delete("hover")
+        self._draw_map()
         self._draw_grid()
         self._draw_curve()
         self._draw_nodes()
-        self._recompute_profile()
-        self._notify_state_change()
+        if recompute_profile:
+            self._recompute_profile()
+        if notify_state:
+            self._notify_state_change()
         self._draw_markers()
+
+    def _schedule_state_notify(self, delay_ms: int = 120) -> None:
+        if self._suspend_state_notify:
+            return
+        if self._state_notify_after_id is not None:
+            try:
+                self.after_cancel(self._state_notify_after_id)
+            except Exception:
+                pass
+            self._state_notify_after_id = None
+        self._state_notify_after_id = self.after(delay_ms, self._flush_scheduled_state_notify)
+
+    def _flush_scheduled_state_notify(self) -> None:
+        self._state_notify_after_id = None
+        self._notify_state_change()
+
+    def _draw_map(self) -> None:
+        if self._map_image is None:
+            return
+        model_size = self._map_model_size()
+        if model_size is None:
+            return
+        model_w, model_h = model_size
+        if model_w <= 0.0 or model_h <= 0.0:
+            return
+        draw_w = max(1, int(round(model_w * self._view_scale)))
+        draw_h = max(1, int(round(model_h * self._view_scale)))
+        angle_deg = self._map_rotation_deg()
+        angle_key = int(round((angle_deg % 360.0) * 10.0))
+        cache_key = (draw_w, draw_h, angle_key)
+        if self._map_image_cache_size != cache_key:
+            resized = self._map_image.resize((draw_w, draw_h), Image.Resampling.LANCZOS)
+            if angle_key != 0:
+                rotated = resized.rotate(-angle_deg, resample=Image.Resampling.BICUBIC, expand=True)
+            else:
+                rotated = resized
+            self._map_image_tk = ImageTk.PhotoImage(rotated)
+            self._map_image_cache_size = cache_key
+        vx, vy = self._to_view(self._map_center)
+        self.canvas.create_image(vx, vy, image=self._map_image_tk, anchor="center", tags="map")
 
     def _draw_grid(self) -> None:
         step = self._cell_px()
@@ -562,9 +884,6 @@ class CoordinateTab(ttk.Frame):
         self._expected_dt_s = params.dt
         if not self._expected_running:
             self.prepare_expected()
-        if self._expected_running:
-            self._expected_start_ms = now_ms_monotonic()
-            self._expected_world = self._expected_poses[0] if self._expected_poses else None
         self._draw_rpm()
 
     def _read_float(self, var: tk.StringVar, default: float) -> float:
@@ -654,16 +973,18 @@ class CoordinateTab(ttk.Frame):
         return self._expected_cmds
 
     def start_expected(self, start_ms: int) -> None:
-        if not self._expected_poses:
-            return
         self._expected_start_ms = start_ms
         self._expected_running = True
-        self._expected_tick()
+        if self._expected_world is None:
+            self._expected_world = (0.0, 0.0, 0.0)
+        self._draw_markers()
 
     def stop_expected(self) -> None:
         self._expected_running = False
         self._expected_start_ms = None
         self._expected_world = None
+        self._controller = None
+        self._controller_track = None
         self._draw_markers()
 
     def _expected_tick(self) -> None:
@@ -709,7 +1030,9 @@ class CoordinateTab(ttk.Frame):
         if L <= 1e-9:
             return (x, y, theta)
         v = 0.5 * (v_right + v_left)
-        w = (v_right - v_left) / L
+        # Internal heading uses theta=0 along +Y and grows clockwise.
+        # For this convention, angular rate sign is opposite to the standard diff-drive equation.
+        w = (v_left - v_right) / L
         if abs(w) <= 1e-6:
             x += v * dt * math.sin(theta)
             y += v * dt * math.cos(theta)
@@ -804,50 +1127,161 @@ class CoordinateTab(ttk.Frame):
 
     # ---------------- Interaction ----------------
 
+    def _choose_map_file(self) -> None:
+        if Image is None or ImageTk is None:
+            messagebox.showerror("Coordinate", "Map image support requires Pillow (PIL).")
+            return
+        path = filedialog.askopenfilename(
+            title="Select map image",
+            filetypes=[
+                ("Map images", "*.png *.jpg *.jpeg"),
+                ("PNG", "*.png"),
+                ("JPEG", "*.jpg *.jpeg"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        if not self._load_map_image(path, recenter=True, show_errors=True, redraw=False):
+            return
+        self._map_image_scale_var.set(1.0)
+        self._map_image_scale_label_var.set("1.00x")
+        self._map_rotation_var.set(0.0)
+        self._map_rotation_label_var.set("0.0 deg")
+        self._map_image_cache_size = None
+        self._redraw()
+
+    def _on_map_scale_change(self, _value: str | None = None) -> None:
+        self._map_image_scale_label_var.set(f"{self._map_scale_factor():.2f}x")
+        self._map_image_cache_size = None
+        if self._map_image is not None:
+            self._redraw(recompute_profile=False, notify_state=True)
+
+    def _on_map_rotation_change(self, _value: str | None = None) -> None:
+        self._map_rotation_label_var.set(f"{self._map_rotation_deg():.1f} deg")
+        self._map_image_cache_size = None
+        if self._map_image is not None:
+            self._redraw(recompute_profile=False, notify_state=True)
+
+    def _load_map_image(
+        self,
+        path: str,
+        *,
+        recenter: bool,
+        show_errors: bool,
+        redraw: bool = False,
+    ) -> bool:
+        if Image is None or ImageTk is None:
+            if show_errors:
+                messagebox.showerror("Coordinate", "Map image support requires Pillow (PIL).")
+            return False
+        try:
+            with Image.open(path) as src:
+                loaded = src.convert("RGBA")
+        except (FileNotFoundError, PermissionError, OSError, UnidentifiedImageError) as exc:
+            if show_errors:
+                messagebox.showerror("Coordinate", f"Failed to load map image:\n{exc}")
+            return False
+        self._map_path = path
+        self._map_image = loaded
+        self._map_image_tk = None
+        self._map_image_cache_size = None
+        self._map_file_var.set(os.path.basename(path))
+        if recenter:
+            self._map_center = self._center()
+        self.map_scale_slider.state(["!disabled"])
+        self.map_rot_slider.state(["!disabled"])
+        if redraw:
+            self._redraw()
+        return True
+
+    def _clear_map_drag_state(self) -> None:
+        self._map_drag_start = None
+        self._map_drag_origin = None
+        self._map_drag_moved = False
+        self._map_click_add_point = None
+
     def _on_press(self, e: tk.Event) -> None:
         if not self._editable:
             return
+        self._clear_map_drag_state()
         hit = self._hit_test(e.x, e.y)
         if hit:
             self._drag_target = hit
+            return
+        if self._hit_map(e.x, e.y):
+            self._map_drag_start = (e.x, e.y)
+            self._map_drag_origin = self._map_center
+            self._map_drag_moved = False
+            self._map_click_add_point = self._from_view((e.x, e.y))
             return
         mx, my = self._from_view((e.x, e.y))
         self._add_node(mx, my)
         self._drag_target = ("anchor", len(self.nodes) - 1)
 
     def _on_drag(self, e: tk.Event) -> None:
-        if not self._drag_target:
-            return
-        kind, idx = self._drag_target
-        node = self.nodes[idx]
-        if kind == "anchor":
-            if idx == 0:
-                return
-            if not self._editable:
-                return
-            mx, my = self._from_view((e.x, e.y))
-            node.anchor = (mx, my)
-        elif kind == "in":
-            if not self._editable:
-                return
-            mx, my = self._from_view((e.x, e.y))
-            offset = self._handle_offset(node.anchor, mx, my)
-            self._set_symmetric_handle(node, idx, "in", offset)
-        elif kind == "out":
-            if idx == 0:
-                _, my = self._from_view((e.x, e.y))
-                dy = my - node.anchor[1]
-                offset = (0.0, min(dy, -5.0))
-                node.handle_out = offset
-            else:
+        if self._drag_target:
+            kind, idx = self._drag_target
+            node = self.nodes[idx]
+            if kind == "anchor":
+                if idx == 0:
+                    return
+                if not self._editable:
+                    return
+                mx, my = self._from_view((e.x, e.y))
+                node.anchor = (mx, my)
+            elif kind == "in":
                 if not self._editable:
                     return
                 mx, my = self._from_view((e.x, e.y))
                 offset = self._handle_offset(node.anchor, mx, my)
-                self._set_symmetric_handle(node, idx, "out", offset)
-        self._redraw()
+                self._set_symmetric_handle(node, idx, "in", offset)
+            elif kind == "out":
+                if idx == 0:
+                    _, my = self._from_view((e.x, e.y))
+                    dy = my - node.anchor[1]
+                    offset = (0.0, min(dy, -5.0))
+                    node.handle_out = offset
+                else:
+                    if not self._editable:
+                        return
+                    mx, my = self._from_view((e.x, e.y))
+                    offset = self._handle_offset(node.anchor, mx, my)
+                    self._set_symmetric_handle(node, idx, "out", offset)
+            self._redraw()
+            return
+        if self._map_drag_start is None or self._map_drag_origin is None:
+            return
+        dx = e.x - self._map_drag_start[0]
+        dy = e.y - self._map_drag_start[1]
+        if not self._map_drag_moved and math.hypot(dx, dy) >= self._map_drag_threshold_px:
+            self._map_drag_moved = True
+            self._map_click_add_point = None
+        if not self._map_drag_moved:
+            return
+        inv_scale = max(self._view_scale, 1e-9)
+        self._map_center = (
+            self._map_drag_origin[0] + dx / inv_scale,
+            self._map_drag_origin[1] + dy / inv_scale,
+        )
+        self._redraw(recompute_profile=False, notify_state=False)
+        self._schedule_state_notify()
 
     def _on_release(self, _e: tk.Event) -> None:
+        if self._drag_target is not None:
+            self._drag_target = None
+            return
+        if self._map_drag_start is None:
+            return
+        add_point = self._map_click_add_point
+        moved = self._map_drag_moved
+        self._clear_map_drag_state()
+        if moved:
+            self._schedule_state_notify(0)
+            return
+        if add_point is None:
+            return
+        self._add_node(add_point[0], add_point[1])
         self._drag_target = None
 
     def _handle_offset(self, anchor: tuple[float, float], x: float, y: float) -> tuple[float, float]:
@@ -1139,11 +1573,13 @@ class CoordinateTab(ttk.Frame):
         dx = e.x - self._pan_start[0]
         dy = e.y - self._pan_start[1]
         self._view_pan = (self._pan_origin[0] + dx, self._pan_origin[1] + dy)
-        self._redraw()
+        self._redraw(recompute_profile=False, notify_state=False)
+        self._schedule_state_notify()
 
     def _on_pan_end(self, _e: tk.Event) -> None:
         self._pan_start = None
         self._pan_origin = None
+        self._schedule_state_notify(0)
 
     def _on_zoom(self, e: tk.Event) -> None:
         if getattr(e, "num", None) == 4:
@@ -1165,7 +1601,8 @@ class CoordinateTab(ttk.Frame):
         new_px = e.x - cx - (mx - cx) * new_scale
         new_py = e.y - cy - (my - cy) * new_scale
         self._view_pan = (new_px, new_py)
-        self._redraw()
+        self._redraw(recompute_profile=False, notify_state=False)
+        self._schedule_state_notify()
 
     def _hit_test(self, x: float, y: float) -> Optional[tuple[str, int]]:
         for idx, node in enumerate(self.nodes):
