@@ -36,6 +36,7 @@ Log format: .log (JSON Lines)
 - Coordinate tab: optional map image under trajectory/grid (PNG/JPG), map scale/rotation sliders, and map dragging with initial center aligned to origin.
 - Coordinate tab: integrated Pure Pursuit controller for online command generation and added pose source selector (internal integrator or trolley data).
 - GUI: added Test mode toggle near Connect to run coordinate algorithm locally (internal integrator) without UART transmission.
+- Coordinate TX fix: explicit neutral C0 is sent on mission finish and on Stop button to avoid residual movement after trajectory end.
 - Coordinate odometry/control fixes: corrected angular-rate sign in internal integrator, switched tacho odometry to timestamp-based dt, and improved Pure Pursuit recovery/stability when far from track.
 - Physics: speed parameters table for PWM↔speed mapping; Coordinate shows left/right PWM (with shift/linear) on hover.
 - Coordinate: Start/Stop controls send motion commands after Time Sync; editing locked while running; actual tacho overlay on RPM graph.

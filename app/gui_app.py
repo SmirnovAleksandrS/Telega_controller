@@ -413,10 +413,21 @@ class VirtualControllerApp:
         if not self._coord_running:
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
+            self._send_coordinate_stop()
             return
         self._coord_running = False
         self.coord_tab.set_running(False)
         self.coord_tab.stop_expected()
+        self._send_coordinate_stop()
+
+    def _send_coordinate_stop(self) -> None:
+        if not self.worker.is_open:
+            return
+        ts_u32 = u32(now_ms_monotonic())
+        # Coordinate mode uses track swap for non-symmetric commands.
+        # Stop command is symmetric, but we keep same C0 path and duration policy.
+        pkt = build_control(ts_u32, self._manual_neutral, self._manual_neutral, self._control_duration_ms)
+        self.worker.send(pkt)
 
     def _coord_send_tick(self) -> None:
         if not self._coord_running or self._kill_active:
@@ -433,6 +444,7 @@ class VirtualControllerApp:
             self._coord_running = False
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
+            self._send_coordinate_stop()
             return
         if cmd is None:
             left_cmd, right_cmd = self._manual_neutral, self._manual_neutral
