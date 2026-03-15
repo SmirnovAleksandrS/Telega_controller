@@ -38,6 +38,20 @@ from utils.pure_pursuit_controller import (
     SimplePolylineTrack,
 )
 from app.dialogs import SpeedMapConfig
+from runtime.contracts import (
+    AutopilotMode,
+    BuiltinAutopilotTuning,
+    DriveCommand,
+    GeometrySettings,
+    MissionConfig,
+    MotionSettings,
+    PoseEstimate,
+    PoseSourceMode,
+    PwmCorrection,
+    SpeedMapEntry,
+    TelemetrySubscription,
+    TrackPoint,
+)
 
 
 @dataclass
@@ -45,6 +59,34 @@ class BezierNode:
     anchor: tuple[float, float]
     handle_in: Optional[tuple[float, float]] = None   # offset from anchor
     handle_out: Optional[tuple[float, float]] = None  # offset from anchor
+
+
+POSE_SOURCE_LABELS: dict[PoseSourceMode, str] = {
+    PoseSourceMode.INTERNAL: "Internal integrator",
+    PoseSourceMode.TROLLEY: "Trolley data",
+    PoseSourceMode.EXTERNAL: "External estimator",
+}
+
+POSE_SOURCE_ALIASES: dict[str, PoseSourceMode] = {
+    PoseSourceMode.INTERNAL.value: PoseSourceMode.INTERNAL,
+    PoseSourceMode.TROLLEY.value: PoseSourceMode.TROLLEY,
+    PoseSourceMode.EXTERNAL.value: PoseSourceMode.EXTERNAL,
+    "Internal integrator": PoseSourceMode.INTERNAL,
+    "Trolley data": PoseSourceMode.TROLLEY,
+    "External estimator": PoseSourceMode.EXTERNAL,
+}
+
+AUTOPILOT_LABELS: dict[AutopilotMode, str] = {
+    AutopilotMode.BUILTIN_PURE_PURSUIT: "Built-in Pure Pursuit",
+    AutopilotMode.EXTERNAL: "External autopilot",
+}
+
+AUTOPILOT_ALIASES: dict[str, AutopilotMode] = {
+    AutopilotMode.BUILTIN_PURE_PURSUIT.value: AutopilotMode.BUILTIN_PURE_PURSUIT,
+    AutopilotMode.EXTERNAL.value: AutopilotMode.EXTERNAL,
+    "Built-in Pure Pursuit": AutopilotMode.BUILTIN_PURE_PURSUIT,
+    "External autopilot": AutopilotMode.EXTERNAL,
+}
 
 
 class CoordinateTab(ttk.Frame):
@@ -83,6 +125,7 @@ class CoordinateTab(ttk.Frame):
 
         self._a1_cm = 20.0
         self._a2_cm = 20.0
+        self._drive_wheel_diameter_cm = 10.0
         self._v_cm = 0.5
         self._accel = 0.5
         self._decel = 0.5
@@ -90,7 +133,7 @@ class CoordinateTab(ttk.Frame):
         self._speed_map = SpeedMapConfig()
         self._pwm_left = 1500.0
         self._pwm_right = 1500.0
-        self._track_circumference_m = 1.0
+        self._track_circumference_m = math.pi * self._drive_wheel_diameter_cm / 100.0
         self._editable = True
         self._lookahead_min_m = 0.25
         self._lookahead_max_m = 1.50
@@ -120,7 +163,8 @@ class CoordinateTab(ttk.Frame):
         self._map_image_scale_label_var = tk.StringVar(value="1.00x")
         self._map_rotation_var = tk.DoubleVar(value=0.0)
         self._map_rotation_label_var = tk.StringVar(value="0.0 deg")
-        self._pose_source_var = tk.StringVar(value="Internal integrator")
+        self._pose_source_var = tk.StringVar(value=POSE_SOURCE_LABELS[PoseSourceMode.INTERNAL])
+        self._autopilot_var = tk.StringVar(value=AUTOPILOT_LABELS[AutopilotMode.BUILTIN_PURE_PURSUIT])
 
         self._drag_target: Optional[tuple[str, int]] = None
         self._state_notify_after_id: str | None = None
@@ -288,12 +332,25 @@ class CoordinateTab(ttk.Frame):
         self.pose_source_box = ttk.Combobox(
             pose_row,
             textvariable=self._pose_source_var,
-            values=["Internal integrator", "Trolley data"],
+            values=[POSE_SOURCE_LABELS[item] for item in PoseSourceMode],
             width=20,
             state="readonly",
         )
         self.pose_source_box.pack(side="left", padx=(8, 0))
         self.pose_source_box.bind("<<ComboboxSelected>>", lambda _e: self._notify_state_change())
+
+        autopilot_row = ttk.Frame(right)
+        autopilot_row.grid(row=8, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(autopilot_row, text="Autopilot").pack(side="left")
+        self.autopilot_box = ttk.Combobox(
+            autopilot_row,
+            textvariable=self._autopilot_var,
+            values=[AUTOPILOT_LABELS[item] for item in AutopilotMode],
+            width=20,
+            state="readonly",
+        )
+        self.autopilot_box.pack(side="left", padx=(12, 0))
+        self.autopilot_box.bind("<<ComboboxSelected>>", lambda _e: self._notify_state_change())
 
         self.bottom_nb = ttk.Notebook(self)
         self.bottom_nb.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
@@ -360,6 +417,8 @@ class CoordinateTab(ttk.Frame):
         self._last_actual_ts_ms: Optional[int] = None
         self._actual_pose: Optional[tuple[float, float, float]] = None
         self._actual_world: Optional[tuple[float, float, float]] = None
+        self._external_pose: Optional[PoseEstimate] = None
+        self._external_world: Optional[tuple[float, float, float]] = None
         self._suspend_state_notify = False
 
     def _center(self) -> tuple[float, float]:
@@ -475,16 +534,29 @@ class CoordinateTab(ttk.Frame):
         px_per_m = 1.0 / self._meters_per_px()
         return (cx + pt[0] * px_per_m, cy - pt[1] * px_per_m)
 
-    def set_geometry(self, a1_cm: float, a2_cm: float) -> None:
+    def set_geometry(self, a1_cm: float, a2_cm: float, drive_wheel_diameter_cm: float) -> None:
         self._a1_cm = max(a1_cm, 0.0)
         self._a2_cm = max(a2_cm, 0.0)
+        self._drive_wheel_diameter_cm = max(drive_wheel_diameter_cm, 0.0)
+        self._track_circumference_m = math.pi * max(self._drive_wheel_diameter_cm, 0.0) / 100.0
         self._redraw()
 
     def set_speed_map(self, cfg: SpeedMapConfig) -> None:
         self._speed_map = cfg
-        self._track_circumference_m = cfg.track_circumference_m
         self._update_pwm_display()
         self._refresh_expected_from_commands()
+
+    def get_pose_source_mode(self) -> PoseSourceMode:
+        return POSE_SOURCE_ALIASES.get(
+            self._pose_source_var.get().strip(),
+            PoseSourceMode.INTERNAL,
+        )
+
+    def get_autopilot_mode(self) -> AutopilotMode:
+        return AUTOPILOT_ALIASES.get(
+            self._autopilot_var.get().strip(),
+            AutopilotMode.BUILTIN_PURE_PURSUIT,
+        )
 
     def get_state(self) -> dict:
         nodes = []
@@ -515,7 +587,8 @@ class CoordinateTab(ttk.Frame):
             "right_shift": self._right_shift_var.get(),
             "left_linear": self._left_linear_var.get(),
             "right_linear": self._right_linear_var.get(),
-            "pose_source": self._pose_source_var.get(),
+            "pose_source": self.get_pose_source_mode().value,
+            "autopilot_mode": self.get_autopilot_mode().value,
             "view_scale": self._view_scale,
             "view_pan": [self._view_pan[0], self._view_pan[1]],
         }
@@ -557,10 +630,16 @@ class CoordinateTab(ttk.Frame):
         self._right_shift_var.set(str(data.get("right_shift", self._right_shift_var.get())))
         self._left_linear_var.set(str(data.get("left_linear", self._left_linear_var.get())))
         self._right_linear_var.set(str(data.get("right_linear", self._right_linear_var.get())))
-        pose_source = str(data.get("pose_source", self._pose_source_var.get()))
-        if pose_source not in ("Internal integrator", "Trolley data"):
-            pose_source = "Internal integrator"
-        self._pose_source_var.set(pose_source)
+        pose_source = POSE_SOURCE_ALIASES.get(
+            str(data.get("pose_source", self.get_pose_source_mode().value)),
+            PoseSourceMode.INTERNAL,
+        )
+        self._pose_source_var.set(POSE_SOURCE_LABELS[pose_source])
+        autopilot_mode = AUTOPILOT_ALIASES.get(
+            str(data.get("autopilot_mode", self.get_autopilot_mode().value)),
+            AutopilotMode.BUILTIN_PURE_PURSUIT,
+        )
+        self._autopilot_var.set(AUTOPILOT_LABELS[autopilot_mode])
         try:
             self._view_scale = float(data.get("view_scale", self._view_scale))
         except Exception:
@@ -599,10 +678,12 @@ class CoordinateTab(ttk.Frame):
             self.start_btn.configure(state="disabled")
             self.stop_btn.configure(state="normal")
             self.pose_source_box.configure(state="disabled")
+            self.autopilot_box.configure(state="disabled")
         else:
             self.start_btn.configure(state="normal")
             self.stop_btn.configure(state="disabled")
             self.pose_source_box.configure(state="readonly")
+            self.autopilot_box.configure(state="readonly")
 
     def get_command_sequence(self) -> list[tuple[int, int]]:
         if not self._profile_s:
@@ -653,11 +734,55 @@ class CoordinateTab(ttk.Frame):
                 last = world
         return pts
 
+    def build_mission_config(self) -> MissionConfig:
+        points = tuple(
+            TrackPoint(x_m=world[0], y_m=world[1])
+            for world in self._track_world_polyline()
+        )
+        geometry = GeometrySettings(
+            a1_m=self._a1_cm / 100.0,
+            a2_m=self._a2_cm / 100.0,
+            track_width_m=max((self._a1_cm + self._a2_cm) / 100.0, 1e-6),
+            track_circumference_m=self._track_circumference_m,
+        )
+        motion = MotionSettings(
+            target_center_speed_m_s=self._read_float(self._v_cm_var, self._v_cm),
+            accel_m_s2=self._read_float(self._accel_var, self._accel),
+            decel_m_s2=self._read_float(self._decel_var, self._decel),
+            controller_dt_s=self._read_float(self._dt_var, self._dt_ms) / 1000.0,
+            minimal_turn_radius_m=self._min_radius_m(),
+        )
+        builtin_tuning = BuiltinAutopilotTuning(
+            lookahead_min_m=self._lookahead_min_m,
+            lookahead_max_m=self._lookahead_max_m,
+            lookahead_gain=self._lookahead_k,
+            curvature_slowdown=self._kappa_slowdown,
+        )
+        speed_map = (
+            SpeedMapEntry(pwm=self._speed_map.pwm_1, speed_m_s=self._speed_map.speed_1),
+            SpeedMapEntry(pwm=self._speed_map.pwm_2, speed_m_s=self._speed_map.speed_2),
+            SpeedMapEntry(pwm=self._speed_map.pwm_3, speed_m_s=self._speed_map.speed_3),
+        )
+        pwm_correction = PwmCorrection(
+            left_shift=self._read_float(self._left_shift_var, 0.0),
+            right_shift=self._read_float(self._right_shift_var, 0.0),
+            left_linear=self._read_float(self._left_linear_var, 1.0),
+            right_linear=self._read_float(self._right_linear_var, 1.0),
+        )
+        return MissionConfig(
+            track_points=points,
+            geometry=geometry,
+            motion=motion,
+            builtin_tuning=builtin_tuning,
+            speed_map=speed_map,
+            pwm_correction=pwm_correction,
+            pose_source=self.get_pose_source_mode(),
+            autopilot=self.get_autopilot_mode(),
+            telemetry_subscription=TelemetrySubscription(),
+        )
+
     def get_pose_source(self) -> str:
-        value = self._pose_source_var.get().strip()
-        if value == "Trolley data":
-            return "trolley"
-        return "internal"
+        return self.get_pose_source_mode().value
 
     def start_controller(self) -> bool:
         pts = self._track_world_polyline()
@@ -680,9 +805,11 @@ class CoordinateTab(ttk.Frame):
         return self._controller.finished
 
     def _controller_input_pose_world(self) -> Optional[tuple[float, float, float]]:
-        source = self.get_pose_source()
-        if source == "trolley":
+        source = self.get_pose_source_mode()
+        if source == PoseSourceMode.TROLLEY:
             return self._actual_world
+        if source == PoseSourceMode.EXTERNAL:
+            return self._external_world
         return self._expected_world
 
     def step_controller(self, dt_s: float, force_internal_pose: bool = False) -> Optional[tuple[int, int]]:
@@ -711,6 +838,8 @@ class CoordinateTab(ttk.Frame):
         self._last_actual_ts_ms = None
         self._actual_pose = None
         self._actual_world = None
+        self._external_pose = None
+        self._external_world = None
         self._draw_rpm()
         self._draw_markers()
 
@@ -728,8 +857,8 @@ class CoordinateTab(ttk.Frame):
         # Clamp dt to reject long UI stalls / outlier packets in odometry integration.
         dt = max(0.005, min(dt, 0.5))
         self._last_actual_ts_ms = ts_ms
-        v_left = (left_rpm / 60.0) * self._track_circumference_m
-        v_right = (right_rpm / 60.0) * self._track_circumference_m
+        v_left = self._track_speed_from_rpm(left_rpm)
+        v_right = self._track_speed_from_rpm(right_rpm)
         last_s = self._actual_s[-1] if self._actual_s else 0.0
         s_next = last_s + (abs(v_left) + abs(v_right)) * 0.5 * dt
         self._actual_s.append(s_next)
@@ -739,6 +868,66 @@ class CoordinateTab(ttk.Frame):
         self._actual_world = self._actual_pose
         self._draw_rpm()
         self._draw_markers()
+
+    def set_external_pose(self, pose: Optional[PoseEstimate]) -> None:
+        self._external_pose = pose
+        if pose is None:
+            self._external_world = None
+        else:
+            self._external_world = (pose.x_m, pose.y_m, pose.theta_rad)
+        self._draw_markers()
+
+    def get_selected_pose_estimate(self) -> Optional[PoseEstimate]:
+        source = self.get_pose_source_mode()
+        if source == PoseSourceMode.TROLLEY:
+            return self._pose_estimate_from_world(self._actual_world, source, self._last_actual_ts_ms)
+        if source == PoseSourceMode.EXTERNAL:
+            return self._external_pose
+        return self._pose_estimate_from_world(self._expected_world, source, None)
+
+    def apply_drive_command(self, command: DriveCommand, dt_s: float) -> None:
+        self._expected_running = True
+        self._pwm_left = float(command.left_pwm)
+        self._pwm_right = float(command.right_pwm)
+        self._pwm_left_var.set(str(int(round(self._pwm_left))))
+        self._pwm_right_var.set(str(int(round(self._pwm_right))))
+        if self._expected_world is None:
+            self._expected_world = (0.0, 0.0, 0.0)
+        if dt_s > 0.0:
+            v_left, v_right = self._speeds_from_pwm(command.left_pwm, command.right_pwm)
+            self._expected_world = self._integrate_pose(self._expected_world, v_left, v_right, dt_s)
+        self._draw_markers()
+
+    def _pose_estimate_from_world(
+        self,
+        pose: Optional[tuple[float, float, float]],
+        source: PoseSourceMode,
+        mcu_time_ms: Optional[int],
+    ) -> Optional[PoseEstimate]:
+        if pose is None:
+            return None
+        return PoseEstimate(
+            x_m=pose[0],
+            y_m=pose[1],
+            theta_rad=pose[2],
+            source=source,
+            pc_time_ms=now_ms_monotonic(),
+            mcu_time_ms=mcu_time_ms,
+        )
+
+    def _speeds_from_pwm(self, left_pwm: float, right_pwm: float) -> tuple[float, float]:
+        points = [
+            SpeedMapPoint(self._speed_map.pwm_1, self._speed_map.speed_1),
+            SpeedMapPoint(self._speed_map.pwm_2, self._speed_map.speed_2),
+            SpeedMapPoint(self._speed_map.pwm_3, self._speed_map.speed_3),
+        ]
+        return (
+            pwm_to_speed(left_pwm, points),
+            pwm_to_speed(right_pwm, points),
+        )
+
+    def _track_speed_from_rpm(self, rpm: float) -> float:
+        return (float(rpm) / 60.0) * self._track_circumference_m
 
     # ---------------- Drawing ----------------
 
@@ -972,6 +1161,12 @@ class CoordinateTab(ttk.Frame):
         self._build_expected_poses()
         return self._expected_cmds
 
+    def reset_expected_pose(self) -> None:
+        self._expected_start_ms = None
+        self._expected_running = True
+        self._expected_world = (0.0, 0.0, 0.0)
+        self._draw_markers()
+
     def start_expected(self, start_ms: int) -> None:
         self._expected_start_ms = start_ms
         self._expected_running = True
@@ -1058,6 +1253,8 @@ class CoordinateTab(ttk.Frame):
             self._draw_pose_marker(self._expected_world, "#00aa00")
         if self._actual_world is not None:
             self._draw_pose_marker(self._actual_world, "#ff8800")
+        if self._external_world is not None and self.get_pose_source_mode() == PoseSourceMode.EXTERNAL:
+            self._draw_pose_marker(self._external_world, "#0088aa")
 
     def _draw_pose_marker(self, pose: tuple[float, float, float], color: str) -> None:
         center, left, right = self._track_centers(pose)

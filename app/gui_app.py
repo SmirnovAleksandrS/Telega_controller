@@ -7,6 +7,7 @@ Main GUI application:
 """
 
 from __future__ import annotations
+import math
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from dataclasses import asdict
@@ -29,7 +30,7 @@ from app.dialogs import (
 )
 from app.styles import PANEL_BG, STATUS_GREEN, STATUS_RED, COLOR_GREEN, COLOR_YELLOW, COLOR_RED
 
-from comm.serial_worker import SerialWorker, RxEvent, RxError
+from comm.serial_worker import SerialWorker, SerialMetrics, RxEvent, RxError
 from comm.protocol import (
     build_sync_req, build_control,
     TYPE_D0_IMU, TYPE_D1_TACHO, TYPE_D2_MOTOR,
@@ -37,8 +38,21 @@ from comm.protocol import (
     SOF, Frame, parse_frame,
     ImuData, TachoData, MotorData, SyncResp
 )
-from comm.time_sync import TimeModel, compute_sync_point, estimate_initial, update_model, SyncPoint
+from comm.time_sync import TimeModel, compute_sync_point, control_timestamp_u32, estimate_initial, update_model, SyncPoint
 from utils.timebase import now_ms_monotonic, u32
+from runtime.contracts import (
+    AutopilotController,
+    AutopilotMode,
+    DriveCommand,
+    ImuTelemetry,
+    MissionConfig,
+    MotorTelemetry,
+    PoseEstimator,
+    PoseSourceMode,
+    TachoTelemetry,
+    TelemetrySnapshot,
+    TimeSyncState,
+)
 
 from log.parsed_logger import ParsedLogger
 
@@ -58,6 +72,7 @@ class VirtualControllerApp:
         self.geom_cfg = GeometryConfig()
         self.speed_cfg = SpeedMapConfig()
         self._test_mode_enabled = False
+        self._manual_cfg = {"command_quantum_ms": 100}
         self._settings_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "app_settings.json"))
         self._load_settings()
 
@@ -75,7 +90,7 @@ class VirtualControllerApp:
 
         # Control sending
         self._last_control = (0, 0)
-        self._control_period_ms = 50
+        self._control_period_ms = 100
         self._control_duration_ms = 100
         self._next_control_due_ms = now_ms_monotonic()
         self._manual_neutral = 1500
@@ -84,10 +99,18 @@ class VirtualControllerApp:
         self._kill_tick_ms = 200
         self._coord_running = False
         self._coord_tick_ms = 10
+        self._set_manual_command_quantum_ms(self._manual_cfg["command_quantum_ms"], persist=False)
 
         # Radio quality (simple heuristic)
         self._rx_ok = collections.deque(maxlen=200)
         self._last_mcu_ts_u32: Optional[int] = None
+        self._next_uart_status_due_ms = now_ms_monotonic()
+        self._last_imu: Optional[ImuData] = None
+        self._last_tacho: Optional[TachoData] = None
+        self._last_motor: Optional[MotorData] = None
+        self._coord_mission: Optional[MissionConfig] = None
+        self._external_pose_provider: Optional[PoseEstimator] = None
+        self._external_autopilot: Optional[AutopilotController] = None
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_exit)
@@ -101,6 +124,22 @@ class VirtualControllerApp:
         finally:
             self.shutdown()
 
+    def set_external_pose_provider(self, provider: Optional[PoseEstimator]) -> None:
+        self._external_pose_provider = provider
+        if provider is None and hasattr(self, "coord_tab"):
+            self.coord_tab.set_external_pose(None)
+
+    def set_external_autopilot(self, controller: Optional[AutopilotController]) -> None:
+        self._external_autopilot = controller
+
+    def _stop_external_autopilot(self) -> None:
+        if self._external_autopilot is None:
+            return
+        try:
+            self._external_autopilot.stop()
+        except Exception:
+            pass
+
     # ---------------- UI ----------------
 
     def _build_ui(self) -> None:
@@ -113,9 +152,15 @@ class VirtualControllerApp:
         self.nb = ttk.Notebook(main)
         self.nb.pack(side="left", fill="both", expand=True)
 
-        self.manual_tab = ManualTab(self.nb, on_control=self._on_manual_control, on_coeffs_change=self._on_manual_coeffs)
+        self.manual_tab = ManualTab(
+            self.nb,
+            on_control=self._on_manual_control,
+            on_coeffs_change=self._on_manual_coeffs,
+            on_command_quantum_change=self._on_manual_command_quantum_change,
+        )
         self.nb.add(self.manual_tab, text="Manual")
         self._apply_joystick_settings()
+        self._apply_manual_settings()
 
         self.coord_tab = CoordinateTab(
             self.nb,
@@ -200,10 +245,13 @@ class VirtualControllerApp:
         self.cur_r = tk.StringVar(value="—")
         self.temp_l = tk.StringVar(value="—")
         self.temp_r = tk.StringVar(value="—")
+        self.speed_l = tk.StringVar(value="—")
+        self.speed_r = tk.StringVar(value="—")
 
         self._make_param_row(crit, 1, "Voltage", self.volt_l, self.volt_r)
         self._make_param_row(crit, 2, "Current", self.cur_l, self.cur_r)
         self._make_param_row(crit, 3, "Temperature", self.temp_l, self.temp_r)
+        self._make_param_row(crit, 4, "Speed", self.speed_l, self.speed_r)
 
         # MCU Time
         self.mcu_time_var = tk.StringVar(value="MCU Time:\nrx=—\nest=—")
@@ -213,12 +261,24 @@ class VirtualControllerApp:
         self.radio_var = tk.StringVar(value="Radio Quality: —/10")
         ttk.Label(parent, textvariable=self.radio_var).pack(anchor="w", pady=(6, 0))
 
+        self.uart_status_var = tk.StringVar(value="UART:\nstate=CLOSED load=0%")
+        self.uart_status_lbl = tk.Label(
+            parent,
+            textvariable=self.uart_status_var,
+            justify="left",
+            anchor="w",
+            bg=PANEL_BG,
+            fg=STATUS_RED,
+        )
+        self.uart_status_lbl.pack(anchor="w", pady=(6, 0), fill="x")
+
         # Deviation settings button
         ttk.Button(parent, text="Deviation Settings", command=self._open_deviation_settings).pack(fill="x", pady=(14, 0))
         ttk.Button(parent, text="Time Sync", command=self._begin_initial_sync).pack(fill="x", pady=(8, 0))
         self.kill_btn = ttk.Button(parent, text="KILL SWITCH", command=self._kill_switch)
         self.kill_btn.pack(fill="x", pady=(12, 0))
         self._apply_kill_style()
+        self._update_uart_status(force=True)
 
     def _make_param_row(self, parent: tk.Widget, row: int, name: str, var_l: tk.StringVar, var_r: tk.StringVar) -> None:
         ttk.Label(parent, text=name).grid(row=row, column=0, sticky="w", pady=4)
@@ -282,8 +342,8 @@ class VirtualControllerApp:
                 # Start initial sync when port opens
                 self._begin_initial_sync()
             else:
-                messagebox.showerror("COM Settings", "Failed to open selected port")
-        self._refresh_connect_btn()
+                self._show_serial_error("COM Settings", "Failed to open selected port")
+        self._update_uart_status(force=True)
 
     def _open_deviation_settings(self) -> None:
         dlg = DeviationSettingsDialog(self.root, self.dev_cfg)
@@ -317,6 +377,7 @@ class VirtualControllerApp:
         if self._is_shutting_down:
             return
         self._is_shutting_down = True
+        self._stop_external_autopilot()
         try:
             self.worker.close()
         finally:
@@ -330,14 +391,84 @@ class VirtualControllerApp:
             except Exception:
                 pass
 
+    def _control_timestamp_u32(self, now_ms: Optional[int] = None) -> int:
+        pc_now_ms = now_ms_monotonic() if now_ms is None else int(now_ms)
+        return control_timestamp_u32(self.time_model, pc_now_ms)
+
+    def _normalize_manual_command_quantum_ms(self, value: int) -> int:
+        return max(1, min(60_000, int(value)))
+
+    def _set_manual_command_quantum_ms(self, value: int, *, persist: bool) -> None:
+        normalized = self._normalize_manual_command_quantum_ms(value)
+        self._manual_cfg["command_quantum_ms"] = normalized
+        self._control_period_ms = normalized
+        self._control_duration_ms = normalized
+        self._next_control_due_ms = now_ms_monotonic()
+        if hasattr(self, "manual_tab"):
+            self.manual_tab.set_command_quantum_ms(normalized)
+        if persist:
+            self._save_settings()
+
+    def build_telemetry_snapshot(self, now_ms: Optional[int] = None) -> TelemetrySnapshot:
+        pc_now_ms = now_ms_monotonic() if now_ms is None else int(now_ms)
+        mcu_est_ms = None
+        if self.time_model.have_lock:
+            mcu_est_ms = self._control_timestamp_u32(pc_now_ms)
+        sync = TimeSyncState(
+            pc_time_ms=pc_now_ms,
+            have_lock=self.time_model.have_lock,
+            scale_a=self.time_model.a,
+            offset_b=self.time_model.b,
+            mcu_rx_ms=self._last_mcu_ts_u32,
+            mcu_est_ms=mcu_est_ms,
+        )
+        imu = None
+        if self._last_imu is not None:
+            imu = ImuTelemetry(
+                ts_ms=self._last_imu.ts_ms,
+                accel=self._last_imu.accel,
+                magn=self._last_imu.magn,
+                gyro=self._last_imu.gyro,
+            )
+        tacho = None
+        if self._last_tacho is not None:
+            tacho = TachoTelemetry(
+                ts_ms=self._last_tacho.ts_ms,
+                left_rpm=self._last_tacho.left_rpm,
+                right_rpm=self._last_tacho.right_rpm,
+            )
+        motor = None
+        if self._last_motor is not None:
+            motor = MotorTelemetry(
+                ts_ms=self._last_motor.ts_ms,
+                current_l=self._last_motor.current_l,
+                current_r=self._last_motor.current_r,
+                voltage_l=self._last_motor.voltage_l,
+                voltage_r=self._last_motor.voltage_r,
+                temp_l=self._last_motor.temp_l,
+                temp_r=self._last_motor.temp_r,
+            )
+        return TelemetrySnapshot(sync=sync, imu=imu, tacho=tacho, motor=motor)
+
+    def _update_external_pose(self, snapshot: TelemetrySnapshot) -> None:
+        if self._external_pose_provider is None:
+            return
+        try:
+            pose = self._external_pose_provider.update_telemetry(snapshot)
+        except Exception:
+            return
+        if pose is not None:
+            self.coord_tab.set_external_pose(pose)
+
     def _toggle_connect(self) -> None:
         if self.worker.is_open:
             self.worker.close()
             if self._coord_running:
                 self._coord_running = False
+                self._stop_external_autopilot()
                 self.coord_tab.set_running(False)
                 self.coord_tab.stop_expected()
-            self._refresh_connect_btn()
+            self._update_uart_status(force=True)
             return
 
         if self.worker.port:
@@ -348,22 +479,68 @@ class VirtualControllerApp:
                     f"Saved port '{self.worker.port}' is not available.\nSelect a port in COM Settings.",
                 )
                 self._open_com_settings()
-                self._refresh_connect_btn()
+                self._update_uart_status(force=True)
                 return
             self.worker.open(self.worker.port, self.worker.baud)
             if self.worker.is_open:
                 self._begin_initial_sync()
             else:
-                messagebox.showerror("COM Settings", "Failed to open port")
+                self._show_serial_error("COM Settings", "Failed to open port")
         else:
             self._open_com_settings()
-        self._refresh_connect_btn()
+        self._update_uart_status(force=True)
 
-    def _refresh_connect_btn(self) -> None:
-        if self.worker.is_open:
-            self.connect_btn.configure(text="Disconnect")
+    def _refresh_connect_btn(self, metrics: Optional[SerialMetrics] = None) -> None:
+        if metrics is None:
+            metrics = self.worker.get_metrics()
+        state = metrics.state
+        if state == "open":
+            self.connect_btn.configure(text="Disconnect", state="normal")
+        elif state == "opening":
+            self.connect_btn.configure(text="Opening...", state="disabled")
+        elif state == "closing":
+            self.connect_btn.configure(text="Closing...", state="disabled")
         else:
-            self.connect_btn.configure(text="Connect")
+            self.connect_btn.configure(text="Connect", state="normal")
+
+    def _show_serial_error(self, title: str, fallback: str) -> None:
+        metrics = self.worker.get_metrics()
+        error = metrics.last_error.strip() or fallback
+        messagebox.showerror(title, error)
+
+    def _update_uart_status(self, *, force: bool = False) -> None:
+        if not hasattr(self, "uart_status_var"):
+            return
+        now_ms = now_ms_monotonic()
+        if not force and now_ms < self._next_uart_status_due_ms:
+            return
+        self._next_uart_status_due_ms = now_ms + 250
+        metrics = self.worker.get_metrics()
+
+        tx_kib_s = metrics.tx_rate_Bps / 1024.0
+        rx_kib_s = metrics.rx_rate_Bps / 1024.0
+        text = (
+            f"UART:\nstate={metrics.state.upper()} load={metrics.peak_load_pct:.0f}% "
+            f"(tx={metrics.tx_load_pct:.0f}% rx={metrics.rx_load_pct:.0f}%)"
+            f"\ntx={tx_kib_s:.1f} KiB/s q={metrics.tx_queue_depth} drop={metrics.tx_dropped}"
+            f"\nrx={rx_kib_s:.1f} KiB/s q={metrics.rx_queue_depth} drop={metrics.rx_dropped}"
+            f"\nerr={metrics.error_count}"
+        )
+        if metrics.last_error:
+            compact_error = metrics.last_error.replace("\n", " ").strip()
+            if len(compact_error) > 80:
+                compact_error = compact_error[:77] + "..."
+            text = f"{text}\nlast={compact_error}"
+        self.uart_status_var.set(text)
+
+        if metrics.state == "open":
+            color = STATUS_GREEN
+        elif metrics.state in {"opening", "closing"}:
+            color = COLOR_YELLOW
+        else:
+            color = STATUS_RED
+        self.uart_status_lbl.configure(fg=color)
+        self._refresh_connect_btn(metrics)
 
     def _is_test_mode(self) -> bool:
         if hasattr(self, "_test_mode_var"):
@@ -397,25 +574,54 @@ class VirtualControllerApp:
         if self._coord_running:
             return
         self.coord_tab.refresh_profile()
-        if self.worker.is_open and not self._is_test_mode():
-            self._begin_initial_sync()
-        if not self.coord_tab.start_controller():
+        mission = self.coord_tab.build_mission_config()
+        if len(mission.track_points) < 2:
             messagebox.showerror("Coordinate", "No valid trajectory for controller")
             return
+        if mission.pose_source == PoseSourceMode.EXTERNAL and self._external_pose_provider is None:
+            messagebox.showerror("Coordinate", "External pose source is selected, but no external estimator is attached")
+            return
+        if mission.autopilot == AutopilotMode.EXTERNAL and self._external_autopilot is None:
+            messagebox.showerror("Coordinate", "External autopilot is selected, but no external controller is attached")
+            return
+        if self.worker.is_open and not self._is_test_mode():
+            self._begin_initial_sync()
         self._coord_tick_ms = max(1, self.coord_tab.get_time_quantum_ms())
+        self.coord_tab.reset_actual_trace()
+        if mission.pose_source == PoseSourceMode.EXTERNAL and self._external_pose_provider is not None:
+            try:
+                self._external_pose_provider.apply_mission(mission)
+                self._external_pose_provider.reset()
+            except Exception as exc:
+                messagebox.showerror("Coordinate", f"Failed to initialize external pose estimator:\n{exc}")
+                return
+        if mission.autopilot == AutopilotMode.EXTERNAL:
+            try:
+                self._external_autopilot.apply_mission(mission)
+                self._external_autopilot.reset()
+            except Exception as exc:
+                messagebox.showerror("Coordinate", f"Failed to initialize external autopilot:\n{exc}")
+                return
+            self.coord_tab.reset_expected_pose()
+        else:
+            if not self.coord_tab.start_controller():
+                messagebox.showerror("Coordinate", "No valid trajectory for controller")
+                return
+            self.coord_tab.start_expected(now_ms_monotonic())
+        self._coord_mission = mission
         self._coord_running = True
         self.coord_tab.set_running(True)
-        self.coord_tab.reset_actual_trace()
-        self.coord_tab.start_expected(now_ms_monotonic())
         self._coord_send_tick()
 
     def _on_coord_stop(self) -> None:
+        self._stop_external_autopilot()
         if not self._coord_running:
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             self._send_coordinate_stop()
             return
         self._coord_running = False
+        self._coord_mission = None
         self.coord_tab.set_running(False)
         self.coord_tab.stop_expected()
         self._send_coordinate_stop()
@@ -423,7 +629,7 @@ class VirtualControllerApp:
     def _send_coordinate_stop(self) -> None:
         if not self.worker.is_open:
             return
-        ts_u32 = u32(now_ms_monotonic())
+        ts_u32 = self._control_timestamp_u32()
         # Coordinate mode uses track swap for non-symmetric commands.
         # Stop command is symmetric, but we keep same C0 path and duration policy.
         pkt = build_control(ts_u32, self._manual_neutral, self._manual_neutral, self._control_duration_ms)
@@ -435,24 +641,54 @@ class VirtualControllerApp:
         test_mode = self._is_test_mode()
         if not self.worker.is_open and not test_mode:
             self._coord_running = False
+            self._stop_external_autopilot()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             return
         dt_s = max(1, self._coord_tick_ms) / 1000.0
-        cmd = self.coord_tab.step_controller(dt_s, force_internal_pose=test_mode)
-        if self.coord_tab.controller_finished():
+        snapshot = self.build_telemetry_snapshot()
+        autopilot_mode = self.coord_tab.get_autopilot_mode()
+        if autopilot_mode == AutopilotMode.EXTERNAL:
+            selected_pose = self.coord_tab.get_selected_pose_estimate()
+            cmd_obj: Optional[DriveCommand] = None
+            try:
+                if self._external_autopilot is not None:
+                    cmd_obj = self._external_autopilot.update(snapshot, selected_pose, dt_s)
+            except Exception as exc:
+                self._coord_running = False
+                self._stop_external_autopilot()
+                self.coord_tab.set_running(False)
+                self.coord_tab.stop_expected()
+                messagebox.showerror("Coordinate", f"External autopilot failed:\n{exc}")
+                return
+            finished = self._external_autopilot.is_finished() if self._external_autopilot is not None else True
+            if cmd_obj is None:
+                cmd_obj = DriveCommand(
+                    left_pwm=self._manual_neutral,
+                    right_pwm=self._manual_neutral,
+                    duration_ms=self._coord_tick_ms,
+                    source="external-neutral",
+                    created_pc_ms=snapshot.sync.pc_time_ms,
+                )
+            self.coord_tab.apply_drive_command(cmd_obj, dt_s)
+            left_cmd, right_cmd = cmd_obj.left_pwm, cmd_obj.right_pwm
+        else:
+            cmd = self.coord_tab.step_controller(dt_s, force_internal_pose=test_mode)
+            finished = self.coord_tab.controller_finished()
+            if cmd is None:
+                left_cmd, right_cmd = self._manual_neutral, self._manual_neutral
+            else:
+                left_cmd, right_cmd = cmd
+        if finished:
             self._coord_running = False
+            self._stop_external_autopilot()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             self._send_coordinate_stop()
             return
-        if cmd is None:
-            left_cmd, right_cmd = self._manual_neutral, self._manual_neutral
-        else:
-            left_cmd, right_cmd = cmd
         if self.worker.is_open and not test_mode:
             # Swap tracks for coordinate mode (per hardware wiring).
-            payload = build_control(now_ms_monotonic(), right_cmd, left_cmd, self._coord_tick_ms)
+            payload = build_control(self._control_timestamp_u32(), right_cmd, left_cmd, self._coord_tick_ms)
             self.worker.send(payload)
         self.root.after(self._coord_tick_ms, self._coord_send_tick)
 
@@ -470,6 +706,9 @@ class VirtualControllerApp:
         }
         self._save_settings()
 
+    def _on_manual_command_quantum_change(self, value: int) -> None:
+        self._set_manual_command_quantum_ms(value, persist=True)
+
     def _send_control_if_due(self, now_ms: int) -> None:
         if not self.worker.is_open:
             return
@@ -485,15 +724,7 @@ class VirtualControllerApp:
 
         left_cmd, right_cmd = self._last_control
 
-        # Timestamp for C0 should be "MCU time in ms" per protocol.
-        # If we have sync lock, translate PC->MCU estimate, else just send PC u32 ms.
-        if self.time_model.have_lock:
-            ts_mcu_est = int(round(self.time_model.mcu_from_pc(now_ms)))
-            ts_u32 = u32(ts_mcu_est)
-        else:
-            ts_u32 = u32(now_ms)
-
-        pkt = build_control(ts_u32, left_cmd, right_cmd, self._control_duration_ms)
+        pkt = build_control(self._control_timestamp_u32(now_ms), left_cmd, right_cmd, self._control_duration_ms)
         self.worker.send(pkt)
 
     def _on_tab_change(self, _event: tk.Event) -> None:
@@ -504,10 +735,11 @@ class VirtualControllerApp:
         self._active_tab = tab_text
         if tab_text != "Coordinate" and self._coord_running:
             self._coord_running = False
+            self._stop_external_autopilot()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
         if tab_text != "Manual" and self.worker.is_open and not self._kill_active:
-            ts_u32 = u32(now_ms_monotonic())
+            ts_u32 = self._control_timestamp_u32()
             pkt = build_control(ts_u32, self._manual_neutral, self._manual_neutral, self._control_duration_ms)
             self.worker.send(pkt)
 
@@ -516,6 +748,7 @@ class VirtualControllerApp:
         self._update_kill_indicator()
         if self._kill_active:
             self._coord_running = False
+            self._stop_external_autopilot()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             self._last_control = (self._manual_neutral, self._manual_neutral)
@@ -533,7 +766,7 @@ class VirtualControllerApp:
         if not self._kill_active:
             return
         if self.worker.is_open:
-            ts_u32 = u32(now_ms_monotonic())
+            ts_u32 = self._control_timestamp_u32()
             pkt = build_control(ts_u32, self._manual_neutral, self._manual_neutral, self._control_duration_ms)
             self.worker.send(pkt)
         self.root.after(self._kill_tick_ms, self._kill_send_tick)
@@ -663,6 +896,7 @@ class VirtualControllerApp:
 
                 # handle messages
                 if isinstance(parsed, MotorData):
+                    self._last_motor = parsed
                     self._last_mcu_ts_u32 = parsed.ts_ms
                     self._update_motor(parsed)
                 elif isinstance(parsed, SyncResp):
@@ -671,14 +905,21 @@ class VirtualControllerApp:
                     self._last_mcu_ts_u32 = parsed.ts_ms
                     # could be extended later
                     self._update_mcu_time_label()
+                if isinstance(parsed, ImuData):
+                    self._last_imu = parsed
                 if isinstance(parsed, TachoData):
+                    self._last_tacho = parsed
+                    self._update_track_speed_labels(parsed.left_rpm, parsed.right_rpm)
                     self.manual_tab.update_rpm(parsed.left_rpm, parsed.right_rpm)
                     self.coord_tab.add_actual_tacho(parsed.left_rpm, parsed.right_rpm, parsed.ts_ms)
                 elif not isinstance(parsed, (MotorData, SyncResp, ImuData)):
                     # unknown Frame - ignore
                     pass
 
+                self._update_external_pose(self.build_telemetry_snapshot(ev.pc_rx_ms))
+
         self._update_mcu_time_label()
+        self._update_uart_status()
         if not self._is_shutting_down:
             self.root.after(20, self._poll_rx)
 
@@ -691,6 +932,7 @@ class VirtualControllerApp:
             "left_linear": 1.0,
             "right_linear": 1.0,
         }
+        self._manual_cfg = {"command_quantum_ms": self._manual_cfg.get("command_quantum_ms", 100)}
         if not os.path.isfile(self._settings_path):
             return
         try:
@@ -717,15 +959,24 @@ class VirtualControllerApp:
             pass
 
         geom = data.get("geometry", {})
+        speed = data.get("speed_map", {})
         try:
+            drive_wheel_diameter_cm = geom.get("drive_wheel_diameter_cm")
+            legacy_circumference_m = speed.get("track_circumference_m")
+            if drive_wheel_diameter_cm is None and legacy_circumference_m is not None:
+                drive_wheel_diameter_cm = float(legacy_circumference_m) * 100.0 / math.pi
             self.geom_cfg = GeometryConfig(
                 a1_cm=float(geom.get("a1_cm", self.geom_cfg.a1_cm)),
                 a2_cm=float(geom.get("a2_cm", self.geom_cfg.a2_cm)),
+                drive_wheel_diameter_cm=float(
+                    drive_wheel_diameter_cm
+                    if drive_wheel_diameter_cm is not None
+                    else self.geom_cfg.drive_wheel_diameter_cm
+                ),
             )
         except Exception:
             pass
 
-        speed = data.get("speed_map", {})
         try:
             self.speed_cfg = SpeedMapConfig(
                 pwm_1=float(speed.get("pwm_1", self.speed_cfg.pwm_1)),
@@ -734,7 +985,6 @@ class VirtualControllerApp:
                 speed_2=float(speed.get("speed_2", self.speed_cfg.speed_2)),
                 pwm_3=float(speed.get("pwm_3", self.speed_cfg.pwm_3)),
                 speed_3=float(speed.get("speed_3", self.speed_cfg.speed_3)),
-                track_circumference_m=float(speed.get("track_circumference_m", self.speed_cfg.track_circumference_m)),
             )
         except Exception:
             pass
@@ -746,6 +996,13 @@ class VirtualControllerApp:
             "left_linear": float(joy.get("left_linear", self._joystick_cfg["left_linear"])),
             "right_linear": float(joy.get("right_linear", self._joystick_cfg["right_linear"])),
         }
+        manual = data.get("manual", {})
+        try:
+            self._manual_cfg["command_quantum_ms"] = self._normalize_manual_command_quantum_ms(
+                int(round(float(manual.get("command_quantum_ms", self._manual_cfg["command_quantum_ms"]))))
+            )
+        except Exception:
+            pass
         self._test_mode_enabled = bool(data.get("test_mode", self._test_mode_enabled))
 
         coord = data.get("coordinate", {})
@@ -762,15 +1019,28 @@ class VirtualControllerApp:
             self._joystick_cfg["right_linear"],
         )
 
+    def _apply_manual_settings(self) -> None:
+        if not hasattr(self, "_manual_cfg"):
+            return
+        self.manual_tab.set_command_quantum_ms(self._manual_cfg["command_quantum_ms"])
+
     def _apply_geometry_settings(self) -> None:
         if not hasattr(self, "geom_cfg"):
             return
-        self.coord_tab.set_geometry(self.geom_cfg.a1_cm, self.geom_cfg.a2_cm)
+        self.coord_tab.set_geometry(
+            self.geom_cfg.a1_cm,
+            self.geom_cfg.a2_cm,
+            self.geom_cfg.drive_wheel_diameter_cm,
+        )
+        self.manual_tab.set_drive_wheel_diameter_cm(self.geom_cfg.drive_wheel_diameter_cm)
+        if self._last_tacho is not None:
+            self._update_track_speed_labels(self._last_tacho.left_rpm, self._last_tacho.right_rpm)
 
     def _apply_speed_map_settings(self) -> None:
         if not hasattr(self, "speed_cfg"):
             return
         self.coord_tab.set_speed_map(self.speed_cfg)
+        self.manual_tab.set_speed_map(self.speed_cfg)
 
     def _save_settings(self) -> None:
         coord_state = None
@@ -789,6 +1059,7 @@ class VirtualControllerApp:
             "geometry": {
                 "a1_cm": self.geom_cfg.a1_cm,
                 "a2_cm": self.geom_cfg.a2_cm,
+                "drive_wheel_diameter_cm": self.geom_cfg.drive_wheel_diameter_cm,
             },
             "speed_map": {
                 "pwm_1": self.speed_cfg.pwm_1,
@@ -797,13 +1068,15 @@ class VirtualControllerApp:
                 "speed_2": self.speed_cfg.speed_2,
                 "pwm_3": self.speed_cfg.pwm_3,
                 "speed_3": self.speed_cfg.speed_3,
-                "track_circumference_m": self.speed_cfg.track_circumference_m,
             },
             "joystick": {
                 "left_shift": self._joystick_cfg["left_shift"],
                 "right_shift": self._joystick_cfg["right_shift"],
                 "left_linear": self._joystick_cfg["left_linear"],
                 "right_linear": self._joystick_cfg["right_linear"],
+            },
+            "manual": {
+                "command_quantum_ms": self._manual_cfg["command_quantum_ms"],
             },
             "test_mode": self._is_test_mode(),
             "coordinate": coord_state,
@@ -877,6 +1150,15 @@ class VirtualControllerApp:
         else:
             est = "—"
         self.mcu_time_var.set(f"MCU Time:\nrx={rx}\nest={est}")
+
+    def _track_speed_from_rpm(self, rpm: int) -> float:
+        return (float(rpm) / 60.0) * self.geom_cfg.track_circumference_m
+
+    def _update_track_speed_labels(self, left_rpm: int, right_rpm: int) -> None:
+        left_speed = self._track_speed_from_rpm(left_rpm)
+        right_speed = self._track_speed_from_rpm(right_rpm)
+        self.speed_l.set(f"{left_speed:.2f} m/s")
+        self.speed_r.set(f"{right_speed:.2f} m/s")
 
     def _update_motor(self, m: MotorData) -> None:
         # Update numbers

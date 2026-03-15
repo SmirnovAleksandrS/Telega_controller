@@ -14,7 +14,9 @@ import collections
 import math
 from typing import Callable
 
+from app.dialogs import SpeedMapConfig
 from app.styles import PANEL_BG
+from utils.speed_map import SpeedMapPoint, pwm_to_speed
 
 @dataclass
 class ManualControlState:
@@ -25,6 +27,7 @@ class ManualControlState:
     right_shift: float = 0.0
     left_linear: float = 1.0
     right_linear: float = 1.0
+    command_quantum_ms: int = 100
 
 class ManualTab(ttk.Frame):
     def __init__(
@@ -32,10 +35,12 @@ class ManualTab(ttk.Frame):
         master: tk.Widget,
         on_control: Callable[[int, int], None],
         on_coeffs_change: Callable[[float, float, float, float], None] | None = None,
+        on_command_quantum_change: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(master)
         self.on_control = on_control
         self.on_coeffs_change = on_coeffs_change
+        self.on_command_quantum_change = on_command_quantum_change
         self.state = ManualControlState()
 
         self._neutral = 1500
@@ -52,6 +57,13 @@ class ManualTab(ttk.Frame):
         self._log_filters: dict[str, tk.BooleanVar] = {}
         self._filter_desc: dict[str, str] = {}
         self._menu_tooltip: _MenuTooltip | None = None
+        self._suspend_command_quantum_notify = False
+        self._track_circumference_m = math.pi * 0.10
+        self._speed_map_points = [
+            SpeedMapPoint(1000.0, -1.0),
+            SpeedMapPoint(1500.0, 0.0),
+            SpeedMapPoint(2000.0, 1.0),
+        ]
 
         # Layout: big left area + right panel will be outside in main window
         # Here we only implement left manual control section.
@@ -111,9 +123,15 @@ class ManualTab(ttk.Frame):
         self.right_linear_var = tk.StringVar(value="1")
         ttk.Entry(self, textvariable=self.right_linear_var, width=6).grid(row=1, column=6, sticky="w", pady=(6, 0))
 
+        ttk.Label(self, text="Command quantum").grid(row=2, column=1, sticky="w", pady=(10, 0))
+        self.command_quantum_var = tk.StringVar(value=str(self.state.command_quantum_ms))
+        ttk.Entry(self, textvariable=self.command_quantum_var, width=8).grid(row=2, column=2, sticky="w", padx=(6, 8), pady=(10, 0))
+        ttk.Label(self, text="ms").grid(row=2, column=3, sticky="w", pady=(10, 0))
+
         # Update coeffs on typing
         for var in [self.left_shift_var, self.right_shift_var, self.left_linear_var, self.right_linear_var]:
             var.trace_add("write", lambda *_: self._read_coeffs())
+        self.command_quantum_var.trace_add("write", lambda *_: self._read_command_quantum())
 
         # Stretch
         self.columnconfigure(0, weight=1)
@@ -146,6 +164,35 @@ class ManualTab(ttk.Frame):
                 self.state.left_linear,
                 self.state.right_linear,
             )
+
+    def _normalize_command_quantum_ms(self, value: int) -> int:
+        return max(1, min(60_000, int(value)))
+
+    def _read_command_quantum(self) -> None:
+        if self._suspend_command_quantum_notify:
+            return
+        try:
+            value = int(round(float(self.command_quantum_var.get().strip())))
+        except ValueError:
+            return
+        value = self._normalize_command_quantum_ms(value)
+        if self.command_quantum_var.get().strip() != str(value):
+            self.command_quantum_var.set(str(value))
+            return
+        self.state.command_quantum_ms = value
+        if self.on_command_quantum_change:
+            self.on_command_quantum_change(value)
+
+    def set_command_quantum_ms(self, value: int) -> None:
+        value = self._normalize_command_quantum_ms(value)
+        self.state.command_quantum_ms = value
+        current = getattr(self, "command_quantum_var", None)
+        if current is not None and current.get().strip() != str(value):
+            self._suspend_command_quantum_notify = True
+            try:
+                self.command_quantum_var.set(str(value))
+            finally:
+                self._suspend_command_quantum_notify = False
 
     def _on_press(self, e: tk.Event) -> None:
         self._dragging = True
@@ -333,9 +380,11 @@ class ManualTab(ttk.Frame):
     def update_rpm(self, left_rpm: int, right_rpm: int) -> None:
         self._last_rpm = (left_rpm, right_rpm)
         left_cmd, right_cmd = self._last_cmd
-        cmd_l_scaled = (left_cmd - self._neutral) / 10.0
-        cmd_r_scaled = (right_cmd - self._neutral) / 10.0
-        self._rpm_samples.append((left_rpm, right_rpm, cmd_l_scaled, cmd_r_scaled))
+        left_speed = self._rpm_to_speed(left_rpm)
+        right_speed = self._rpm_to_speed(right_rpm)
+        cmd_l_speed = pwm_to_speed(left_cmd, self._speed_map_points)
+        cmd_r_speed = pwm_to_speed(right_cmd, self._speed_map_points)
+        self._rpm_samples.append((left_speed, right_speed, cmd_l_speed, cmd_r_speed))
         self._redraw_rpm()
 
     def _redraw_rpm(self) -> None:
@@ -353,16 +402,16 @@ class ManualTab(ttk.Frame):
         # Axes
         c.create_line(left, bottom, right, bottom, fill="#000000")
         c.create_line(left, top, left, bottom, fill="#000000")
-        c.create_text(left + 4, top, text="RPM / cmd", anchor="nw", fill="#000000")
+        c.create_text(left + 4, top, text="Speed (m/s)", anchor="nw", fill="#000000")
 
         if len(self._rpm_samples) < 2:
             return
 
         # Scale
         max_abs = 1.0
-        for l_rpm, r_rpm, l_cmd, r_cmd in self._rpm_samples:
-            max_abs = max(max_abs, abs(l_rpm), abs(r_rpm), abs(l_cmd), abs(r_cmd))
-        max_abs = max(50.0, max_abs)
+        for left_speed, right_speed, left_cmd, right_cmd in self._rpm_samples:
+            max_abs = max(max_abs, abs(left_speed), abs(right_speed), abs(left_cmd), abs(right_cmd))
+        max_abs = max(0.5, max_abs)
 
         def y_of(v: float) -> float:
             return top + (max_abs - v) * (bottom - top) / (2 * max_abs)
@@ -371,7 +420,7 @@ class ManualTab(ttk.Frame):
         def x_of(i: int) -> float:
             return left + i * (right - left) / (n - 1)
 
-        # Lines: left rpm (red), right rpm (blue), left cmd (green), right cmd (orange)
+        # Lines: left speed (red), right speed (blue), left cmd estimate (green), right cmd estimate (orange)
         colors = {
             "l_rpm": "#cc0000",
             "r_rpm": "#0044cc",
@@ -392,7 +441,7 @@ class ManualTab(ttk.Frame):
         draw_series(3, colors["r_cmd"])
 
         # Legend
-        c.create_text(right - 5, top, text="L RPM  R RPM  L cmd  R cmd", anchor="ne", fill="#000000")
+        c.create_text(right - 5, top, text="L speed  R speed  L cmd  R cmd", anchor="ne", fill="#000000")
 
     def _rpm_tick(self) -> None:
         # Always update graph from joystick commands even without MCU data.
@@ -405,6 +454,22 @@ class ManualTab(ttk.Frame):
         self.left_linear_var.set(str(left_linear))
         self.right_linear_var.set(str(right_linear))
 
+    def set_speed_map(self, cfg: SpeedMapConfig) -> None:
+        self._speed_map_points = [
+            SpeedMapPoint(cfg.pwm_1, cfg.speed_1),
+            SpeedMapPoint(cfg.pwm_2, cfg.speed_2),
+            SpeedMapPoint(cfg.pwm_3, cfg.speed_3),
+        ]
+        self._rpm_samples.clear()
+        self.update_rpm(self._last_rpm[0], self._last_rpm[1])
+        self._redraw_rpm()
+
+    def set_drive_wheel_diameter_cm(self, diameter_cm: float) -> None:
+        self._track_circumference_m = math.pi * max(float(diameter_cm), 0.0) / 100.0
+        self._rpm_samples.clear()
+        self.update_rpm(self._last_rpm[0], self._last_rpm[1])
+        self._redraw_rpm()
+
     def get_coeffs(self) -> tuple[float, float, float, float]:
         self._read_coeffs()
         return (
@@ -413,6 +478,9 @@ class ManualTab(ttk.Frame):
             self.state.left_linear,
             self.state.right_linear,
         )
+
+    def _rpm_to_speed(self, rpm: float) -> float:
+        return (float(rpm) / 60.0) * self._track_circumference_m
 
 
 class _MenuTooltip:

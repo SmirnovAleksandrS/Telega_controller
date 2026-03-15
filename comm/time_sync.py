@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from utils.timebase import u32_diff_mod
+from utils.timebase import u32, u32_diff_mod
 
 @dataclass
 class SyncPoint:
@@ -37,6 +37,12 @@ class TimeModel:
         if self.a == 0:
             return 0.0
         return (float(t_mcu_ms) - self.b) / self.a
+
+
+def control_timestamp_u32(model: TimeModel, now_pc_ms: int) -> int:
+    if model.have_lock:
+        return u32(int(round(model.mcu_from_pc(now_pc_ms))))
+    return u32(now_pc_ms)
 
 
 def compute_sync_point(t1_pc_u32: int, t4_pc_u32: int, t2_mcu_u32: int, t3_mcu_u32: int, pc_now_ms_i64: int) -> SyncPoint:

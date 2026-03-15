@@ -3,6 +3,7 @@ Dialogs: COM settings, Deviation settings.
 """
 
 from __future__ import annotations
+import math
 import tkinter as tk
 from tkinter import ttk, messagebox
 from dataclasses import dataclass
@@ -24,6 +25,11 @@ class DeviationConfig:
 class GeometryConfig:
     a1_cm: float = 20.0
     a2_cm: float = 20.0
+    drive_wheel_diameter_cm: float = 10.0
+
+    @property
+    def track_circumference_m(self) -> float:
+        return math.pi * self.drive_wheel_diameter_cm / 100.0
 
 
 @dataclass
@@ -34,7 +40,6 @@ class SpeedMapConfig:
     speed_2: float = 0.0
     pwm_3: float = 1000.0
     speed_3: float = -10.0
-    track_circumference_m: float = 1.0
 
 class ComSettingsDialog(tk.Toplevel):
     def __init__(self, master: tk.Widget, current_port: str, current_baud: int) -> None:
@@ -167,8 +172,12 @@ class GeometrySettingsDialog(tk.Toplevel):
         self.a2_var = tk.StringVar(value=str(self.cfg.a2_cm))
         ttk.Entry(frm, textvariable=self.a2_var, width=10).grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
 
+        ttk.Label(frm, text="Drive wheel diameter (cm)").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        self.drive_wheel_diameter_var = tk.StringVar(value=str(self.cfg.drive_wheel_diameter_cm))
+        ttk.Entry(frm, textvariable=self.drive_wheel_diameter_var, width=10).grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+
         btns = ttk.Frame(frm)
-        btns.grid(row=2, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        btns.grid(row=3, column=0, columnspan=2, sticky="e", pady=(10, 0))
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
@@ -179,13 +188,21 @@ class GeometrySettingsDialog(tk.Toplevel):
         try:
             a1 = float(self.a1_var.get())
             a2 = float(self.a2_var.get())
+            drive_wheel_diameter_cm = float(self.drive_wheel_diameter_var.get())
         except ValueError:
             messagebox.showerror("Geometry Parameters", "Invalid number format")
             return
         if a1 < 0 or a2 < 0:
-            messagebox.showerror("Geometry Parameters", "Values must be >= 0")
+            messagebox.showerror("Geometry Parameters", "A1/A2 must be >= 0")
             return
-        self.result = GeometryConfig(a1_cm=a1, a2_cm=a2)
+        if drive_wheel_diameter_cm <= 0:
+            messagebox.showerror("Geometry Parameters", "Drive wheel diameter must be > 0")
+            return
+        self.result = GeometryConfig(
+            a1_cm=a1,
+            a2_cm=a2,
+            drive_wheel_diameter_cm=drive_wheel_diameter_cm,
+        )
         self.destroy()
 
     def _cancel(self) -> None:
@@ -220,12 +237,8 @@ class SpeedMapDialog(tk.Toplevel):
         add_row(2, self.cfg.pwm_2, self.cfg.speed_2)
         add_row(3, self.cfg.pwm_3, self.cfg.speed_3)
 
-        ttk.Label(frm, text="Track circumference (m)").grid(row=4, column=0, sticky="w", pady=(6, 0))
-        self.circ_var = tk.StringVar(value=str(self.cfg.track_circumference_m))
-        ttk.Entry(frm, textvariable=self.circ_var, width=10).grid(row=4, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
-
         btns = ttk.Frame(frm)
-        btns.grid(row=5, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        btns.grid(row=4, column=0, columnspan=2, sticky="e", pady=(10, 0))
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
@@ -239,13 +252,9 @@ class SpeedMapDialog(tk.Toplevel):
                 pwm_1=float(p1.get()), speed_1=float(s1.get()),
                 pwm_2=float(p2.get()), speed_2=float(s2.get()),
                 pwm_3=float(p3.get()), speed_3=float(s3.get()),
-                track_circumference_m=float(self.circ_var.get()),
             )
         except ValueError:
             messagebox.showerror("Speed Parameters", "Invalid number format")
-            return
-        if cfg.track_circumference_m <= 0.0:
-            messagebox.showerror("Speed Parameters", "Track circumference must be > 0")
             return
         self.result = cfg
         self.destroy()

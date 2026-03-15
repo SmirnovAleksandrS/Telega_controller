@@ -13,7 +13,8 @@
   },
   "geometry": {
     "a1_cm": 20.0,
-    "a2_cm": 20.0
+    "a2_cm": 20.0,
+    "drive_wheel_diameter_cm": 15.0
   },
   "speed_map": {
     "pwm_1": 2000.0,
@@ -21,14 +22,16 @@
     "pwm_2": 1500.0,
     "speed_2": 0.0,
     "pwm_3": 1000.0,
-    "speed_3": -2.0,
-    "track_circumference_m": 10.0
+    "speed_3": -2.0
   },
   "joystick": {
-    "left_shift": 5.0,
-    "right_shift": 5.0,
+    "left_shift": 0.0,
+    "right_shift": 0.0,
     "left_linear": 1.0,
     "right_linear": 1.0
+  },
+  "manual": {
+    "command_quantum_ms": 10
   },
   "test_mode": false,
   "coordinate": {
@@ -87,13 +90,13 @@
         ]
       }
     ],
-    "scale": "2 m",
-    "map_path": "/home/necrosii/Programming/Python/Telega_controller/Снимок экрана_20260227_142505.png",
+    "scale": "20 cm",
+    "map_path": "",
     "map_scale_factor": 2.2557692307692307,
     "map_rotation_deg": 43.84615384615385,
     "map_center": [
-      452.7748699817865,
-      536.3374800500859
+      210.0,
+      210.0
     ],
     "min_radius_cm": "50",
     "v_cm": "1",
@@ -104,11 +107,12 @@
     "right_shift": "0",
     "left_linear": "1",
     "right_linear": "1",
-    "pose_source": "Internal integrator",
-    "view_scale": 0.47158953820000077,
+    "pose_source": "internal",
+    "autopilot_mode": "builtin_pure_pursuit",
+    "view_scale": 0.20000000000000034,
     "view_pan": [
-      -78.83099476260438,
-      74.65205331790878
+      -80.2269627559744,
+      39.21386069182303
     ]
   }
 }
