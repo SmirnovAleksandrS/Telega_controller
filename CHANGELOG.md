@@ -23,6 +23,8 @@ Log format: .log (JSON Lines)
   - saves parsed messages to .log as JSONL, includes PC receive time and time model snapshot
 
 ## Unreleased
+- External runtime bridge: fixed GUI <-> C++ TCP shutdown lifecycle. `stop` now closes only the active session, while explicit `shutdown`/`kill` terminates the stub process and frees the port.
+- GUI runtime lifecycle: fixed kill/tab-switch paths to call the real external runtime stop method instead of a missing `_stop_external_autopilot`.
 - UART stability: rework serial open/close lifecycle with thread-safe stop/join, per-connection parser/stop event, TX queue flush on reconnect, and safer serial timeouts/cancel_read/cancel_write handling.
 - Shutdown reliability: bind window close to unified app shutdown; ensure graceful UART/logger cleanup on terminal `Ctrl+C` and GUI exit.
 - Coordinate tab: grid canvas with scale selector, Bezier curve editor (anchors/handles), and minimum turning radius check (green/red).

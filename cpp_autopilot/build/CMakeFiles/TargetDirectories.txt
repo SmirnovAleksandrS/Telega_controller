@@ -1,0 +1,3 @@
+/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles/telega_cpp_autopilot.dir
+/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles/edit_cache.dir
+/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles/rebuild_cache.dir

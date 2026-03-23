@@ -3,6 +3,8 @@ from runtime.contracts import (
     AutopilotMode,
     BuiltinAutopilotTuning,
     DriveCommand,
+    ExternalRuntimeBridge,
+    ExternalRuntimeState,
     GeometrySettings,
     ImuTelemetry,
     MissionConfig,
@@ -20,12 +22,16 @@ from runtime.contracts import (
     TimeSyncState,
     TrackPoint,
 )
+from runtime.socket_autopilot import SocketAutopilotClient
+from runtime.socket_runtime import SocketExternalRuntime
 
 __all__ = [
     "AutopilotController",
     "AutopilotMode",
     "BuiltinAutopilotTuning",
     "DriveCommand",
+    "ExternalRuntimeBridge",
+    "ExternalRuntimeState",
     "GeometrySettings",
     "ImuTelemetry",
     "MissionConfig",
@@ -42,4 +48,6 @@ __all__ = [
     "TelemetrySubscription",
     "TimeSyncState",
     "TrackPoint",
+    "SocketAutopilotClient",
+    "SocketExternalRuntime",
 ]

@@ -1,5 +1,5 @@
 """
-Stable runtime contracts between GUI, telemetry, pose estimation, and autopilot modules.
+Stable runtime contracts between GUI, telemetry, pose estimation, and the external runtime.
 """
 
 from __future__ import annotations
@@ -171,6 +171,16 @@ class DriveCommand:
         return _serialize(self)
 
 
+@dataclass(frozen=True)
+class ExternalRuntimeState:
+    pose: Optional[PoseEstimate] = None
+    drive_command: Optional[DriveCommand] = None
+    finished: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return _serialize(self)
+
+
 class PoseEstimator(Protocol):
     def apply_mission(self, mission: MissionConfig) -> None:
         ...
@@ -198,6 +208,23 @@ class AutopilotController(Protocol):
         ...
 
     def is_finished(self) -> bool:
+        ...
+
+    def stop(self) -> None:
+        ...
+
+
+class ExternalRuntimeBridge(Protocol):
+    def apply_mission(self, mission: MissionConfig) -> None:
+        ...
+
+    def reset(self) -> None:
+        ...
+
+    def ingest_telemetry(self, snapshot: TelemetrySnapshot) -> None:
+        ...
+
+    def poll_state(self) -> ExternalRuntimeState:
         ...
 
     def stop(self) -> None:

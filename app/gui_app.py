@@ -41,18 +41,19 @@ from comm.protocol import (
 from comm.time_sync import TimeModel, compute_sync_point, control_timestamp_u32, estimate_initial, update_model, SyncPoint
 from utils.timebase import now_ms_monotonic, u32
 from runtime.contracts import (
-    AutopilotController,
     AutopilotMode,
     DriveCommand,
+    ExternalRuntimeBridge,
+    ExternalRuntimeState,
     ImuTelemetry,
     MissionConfig,
     MotorTelemetry,
-    PoseEstimator,
     PoseSourceMode,
     TachoTelemetry,
     TelemetrySnapshot,
     TimeSyncState,
 )
+from runtime.socket_runtime import SocketExternalRuntime
 
 from log.parsed_logger import ParsedLogger
 
@@ -109,8 +110,9 @@ class VirtualControllerApp:
         self._last_tacho: Optional[TachoData] = None
         self._last_motor: Optional[MotorData] = None
         self._coord_mission: Optional[MissionConfig] = None
-        self._external_pose_provider: Optional[PoseEstimator] = None
-        self._external_autopilot: Optional[AutopilotController] = None
+        self._external_runtime: Optional[ExternalRuntimeBridge] = None
+        self._last_external_command: Optional[DriveCommand] = None
+        self.set_external_runtime(self._build_default_external_runtime())
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_exit)
@@ -124,19 +126,53 @@ class VirtualControllerApp:
         finally:
             self.shutdown()
 
-    def set_external_pose_provider(self, provider: Optional[PoseEstimator]) -> None:
-        self._external_pose_provider = provider
-        if provider is None and hasattr(self, "coord_tab"):
+    def set_external_runtime(self, runtime: Optional[ExternalRuntimeBridge]) -> None:
+        previous_runtime = self._external_runtime
+        if previous_runtime is not None and previous_runtime is not runtime:
+            try:
+                previous_runtime.stop()
+            except Exception:
+                pass
+        self._external_runtime = runtime
+        self._last_external_command = None
+        if runtime is None and hasattr(self, "coord_tab"):
             self.coord_tab.set_external_pose(None)
 
-    def set_external_autopilot(self, controller: Optional[AutopilotController]) -> None:
-        self._external_autopilot = controller
+    def _build_default_external_runtime(self) -> ExternalRuntimeBridge:
+        host = (
+            os.environ.get("TELEGA_CPP_RUNTIME_HOST")
+            or os.environ.get("TELEGA_CPP_AUTOPILOT_HOST")
+            or "127.0.0.1"
+        ).strip() or "127.0.0.1"
+        try:
+            port = int(
+                os.environ.get("TELEGA_CPP_RUNTIME_PORT")
+                or os.environ.get("TELEGA_CPP_AUTOPILOT_PORT")
+                or "8765"
+            )
+        except (TypeError, ValueError):
+            port = 8765
+        return SocketExternalRuntime(host=host, port=port)
 
-    def _stop_external_autopilot(self) -> None:
-        if self._external_autopilot is None:
+    def _stop_external_runtime(self) -> None:
+        self._last_external_command = None
+        if self._external_runtime is None:
             return
         try:
-            self._external_autopilot.stop()
+            self._external_runtime.stop()
+        except Exception:
+            pass
+
+    def _shutdown_external_runtime(self) -> None:
+        self._last_external_command = None
+        if self._external_runtime is None:
+            return
+        shutdown_server = getattr(self._external_runtime, "shutdown_server", None)
+        try:
+            if callable(shutdown_server):
+                shutdown_server()
+            else:
+                self._external_runtime.stop()
         except Exception:
             pass
 
@@ -377,7 +413,7 @@ class VirtualControllerApp:
         if self._is_shutting_down:
             return
         self._is_shutting_down = True
-        self._stop_external_autopilot()
+        self._shutdown_external_runtime()
         try:
             self.worker.close()
         finally:
@@ -450,22 +486,61 @@ class VirtualControllerApp:
             )
         return TelemetrySnapshot(sync=sync, imu=imu, tacho=tacho, motor=motor)
 
-    def _update_external_pose(self, snapshot: TelemetrySnapshot) -> None:
-        if self._external_pose_provider is None:
+    def _mission_uses_external_runtime(self, mission: Optional[MissionConfig] = None) -> bool:
+        active_mission = self._coord_mission if mission is None else mission
+        return active_mission is not None and (
+            active_mission.pose_source == PoseSourceMode.EXTERNAL
+            or active_mission.autopilot == AutopilotMode.EXTERNAL
+        )
+
+    def _apply_external_runtime_state(self, state: ExternalRuntimeState) -> None:
+        if state.pose is not None:
+            self.coord_tab.set_external_pose(state.pose)
+        if state.drive_command is not None:
+            self._last_external_command = state.drive_command
+
+    def _poll_external_runtime_state(self) -> ExternalRuntimeState:
+        if self._external_runtime is None:
+            return ExternalRuntimeState()
+        try:
+            state = self._external_runtime.poll_state()
+        except Exception as exc:
+            self._handle_external_runtime_failure(exc)
+            return ExternalRuntimeState()
+        self._apply_external_runtime_state(state)
+        return state
+
+    def _ingest_external_runtime_snapshot(self, snapshot: TelemetrySnapshot) -> None:
+        if not self._coord_running or not self._mission_uses_external_runtime():
+            return
+        if self._external_runtime is None:
             return
         try:
-            pose = self._external_pose_provider.update_telemetry(snapshot)
-        except Exception:
+            self._external_runtime.ingest_telemetry(snapshot)
+            state = self._external_runtime.poll_state()
+        except Exception as exc:
+            self._handle_external_runtime_failure(exc)
             return
-        if pose is not None:
-            self.coord_tab.set_external_pose(pose)
+        self._apply_external_runtime_state(state)
+
+    def _handle_external_runtime_failure(self, exc: Exception) -> None:
+        self._stop_external_runtime()
+        if not self._coord_running:
+            return
+        self._coord_running = False
+        self._coord_mission = None
+        self.coord_tab.set_running(False)
+        self.coord_tab.stop_expected()
+        self._send_coordinate_stop()
+        messagebox.showerror("Coordinate", f"External runtime failed:\n{exc}")
 
     def _toggle_connect(self) -> None:
         if self.worker.is_open:
             self.worker.close()
             if self._coord_running:
                 self._coord_running = False
-                self._stop_external_autopilot()
+                self._coord_mission = None
+                self._stop_external_runtime()
                 self.coord_tab.set_running(False)
                 self.coord_tab.stop_expected()
             self._update_uart_status(force=True)
@@ -578,30 +653,24 @@ class VirtualControllerApp:
         if len(mission.track_points) < 2:
             messagebox.showerror("Coordinate", "No valid trajectory for controller")
             return
-        if mission.pose_source == PoseSourceMode.EXTERNAL and self._external_pose_provider is None:
-            messagebox.showerror("Coordinate", "External pose source is selected, but no external estimator is attached")
-            return
-        if mission.autopilot == AutopilotMode.EXTERNAL and self._external_autopilot is None:
-            messagebox.showerror("Coordinate", "External autopilot is selected, but no external controller is attached")
+        if self._mission_uses_external_runtime(mission) and self._external_runtime is None:
+            messagebox.showerror("Coordinate", "External runtime is selected, but no external runtime is attached")
             return
         if self.worker.is_open and not self._is_test_mode():
             self._begin_initial_sync()
         self._coord_tick_ms = max(1, self.coord_tab.get_time_quantum_ms())
         self.coord_tab.reset_actual_trace()
-        if mission.pose_source == PoseSourceMode.EXTERNAL and self._external_pose_provider is not None:
+        self._last_external_command = None
+        self.coord_tab.set_external_pose(None)
+        if self._mission_uses_external_runtime(mission):
             try:
-                self._external_pose_provider.apply_mission(mission)
-                self._external_pose_provider.reset()
+                assert self._external_runtime is not None
+                self._external_runtime.apply_mission(mission)
+                self._external_runtime.reset()
             except Exception as exc:
-                messagebox.showerror("Coordinate", f"Failed to initialize external pose estimator:\n{exc}")
+                messagebox.showerror("Coordinate", f"Failed to initialize external runtime:\n{exc}")
                 return
         if mission.autopilot == AutopilotMode.EXTERNAL:
-            try:
-                self._external_autopilot.apply_mission(mission)
-                self._external_autopilot.reset()
-            except Exception as exc:
-                messagebox.showerror("Coordinate", f"Failed to initialize external autopilot:\n{exc}")
-                return
             self.coord_tab.reset_expected_pose()
         else:
             if not self.coord_tab.start_controller():
@@ -614,7 +683,7 @@ class VirtualControllerApp:
         self._coord_send_tick()
 
     def _on_coord_stop(self) -> None:
-        self._stop_external_autopilot()
+        self._stop_external_runtime()
         if not self._coord_running:
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
@@ -641,37 +710,31 @@ class VirtualControllerApp:
         test_mode = self._is_test_mode()
         if not self.worker.is_open and not test_mode:
             self._coord_running = False
-            self._stop_external_autopilot()
+            self._coord_mission = None
+            self._stop_external_runtime()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             return
         dt_s = max(1, self._coord_tick_ms) / 1000.0
-        snapshot = self.build_telemetry_snapshot()
         autopilot_mode = self.coord_tab.get_autopilot_mode()
+        command_duration_ms = self._coord_tick_ms
+        runtime_state = self._poll_external_runtime_state() if self._mission_uses_external_runtime() else ExternalRuntimeState()
+        if not self._coord_running:
+            return
         if autopilot_mode == AutopilotMode.EXTERNAL:
-            selected_pose = self.coord_tab.get_selected_pose_estimate()
-            cmd_obj: Optional[DriveCommand] = None
-            try:
-                if self._external_autopilot is not None:
-                    cmd_obj = self._external_autopilot.update(snapshot, selected_pose, dt_s)
-            except Exception as exc:
-                self._coord_running = False
-                self._stop_external_autopilot()
-                self.coord_tab.set_running(False)
-                self.coord_tab.stop_expected()
-                messagebox.showerror("Coordinate", f"External autopilot failed:\n{exc}")
-                return
-            finished = self._external_autopilot.is_finished() if self._external_autopilot is not None else True
+            cmd_obj = self._last_external_command
+            finished = runtime_state.finished
             if cmd_obj is None:
                 cmd_obj = DriveCommand(
                     left_pwm=self._manual_neutral,
                     right_pwm=self._manual_neutral,
                     duration_ms=self._coord_tick_ms,
                     source="external-neutral",
-                    created_pc_ms=snapshot.sync.pc_time_ms,
+                    created_pc_ms=now_ms_monotonic(),
                 )
             self.coord_tab.apply_drive_command(cmd_obj, dt_s)
             left_cmd, right_cmd = cmd_obj.left_pwm, cmd_obj.right_pwm
+            command_duration_ms = max(1, int(cmd_obj.duration_ms))
         else:
             cmd = self.coord_tab.step_controller(dt_s, force_internal_pose=test_mode)
             finished = self.coord_tab.controller_finished()
@@ -681,14 +744,14 @@ class VirtualControllerApp:
                 left_cmd, right_cmd = cmd
         if finished:
             self._coord_running = False
-            self._stop_external_autopilot()
+            self._stop_external_runtime()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             self._send_coordinate_stop()
             return
         if self.worker.is_open and not test_mode:
             # Swap tracks for coordinate mode (per hardware wiring).
-            payload = build_control(self._control_timestamp_u32(), right_cmd, left_cmd, self._coord_tick_ms)
+            payload = build_control(self._control_timestamp_u32(), right_cmd, left_cmd, command_duration_ms)
             self.worker.send(payload)
         self.root.after(self._coord_tick_ms, self._coord_send_tick)
 
@@ -735,7 +798,7 @@ class VirtualControllerApp:
         self._active_tab = tab_text
         if tab_text != "Coordinate" and self._coord_running:
             self._coord_running = False
-            self._stop_external_autopilot()
+            self._stop_external_runtime()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
         if tab_text != "Manual" and self.worker.is_open and not self._kill_active:
@@ -748,7 +811,7 @@ class VirtualControllerApp:
         self._update_kill_indicator()
         if self._kill_active:
             self._coord_running = False
-            self._stop_external_autopilot()
+            self._stop_external_runtime()
             self.coord_tab.set_running(False)
             self.coord_tab.stop_expected()
             self._last_control = (self._manual_neutral, self._manual_neutral)
@@ -912,11 +975,11 @@ class VirtualControllerApp:
                     self._update_track_speed_labels(parsed.left_rpm, parsed.right_rpm)
                     self.manual_tab.update_rpm(parsed.left_rpm, parsed.right_rpm)
                     self.coord_tab.add_actual_tacho(parsed.left_rpm, parsed.right_rpm, parsed.ts_ms)
+                    # External runtime treats the incoming speed sample as the main processing trigger.
+                    self._ingest_external_runtime_snapshot(self.build_telemetry_snapshot(ev.pc_rx_ms))
                 elif not isinstance(parsed, (MotorData, SyncResp, ImuData)):
                     # unknown Frame - ignore
                     pass
-
-                self._update_external_pose(self.build_telemetry_snapshot(ev.pc_rx_ms))
 
         self._update_mcu_time_label()
         self._update_uart_status()

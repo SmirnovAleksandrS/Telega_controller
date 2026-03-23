@@ -6,9 +6,12 @@ from comm.time_sync import TimeModel, control_timestamp_u32
 from runtime.contracts import (
     AutopilotMode,
     BuiltinAutopilotTuning,
+    DriveCommand,
+    ExternalRuntimeState,
     GeometrySettings,
     MissionConfig,
     MotionSettings,
+    PoseEstimate,
     PoseSourceMode,
     PwmCorrection,
     SpeedMapEntry,
@@ -75,6 +78,32 @@ class RuntimeContractsTests(unittest.TestCase):
         self.assertEqual(data["pose_source"], "external")
         self.assertEqual(data["autopilot"], "external")
         self.assertEqual(data["telemetry_subscription"]["channels"], ["imu", "tacho", "motor"])
+
+    def test_external_runtime_state_serializes_nested_outputs(self) -> None:
+        state = ExternalRuntimeState(
+            pose=PoseEstimate(
+                x_m=1.0,
+                y_m=2.0,
+                theta_rad=0.5,
+                source=PoseSourceMode.EXTERNAL,
+                pc_time_ms=100,
+                mcu_time_ms=200,
+            ),
+            drive_command=DriveCommand(
+                left_pwm=1500,
+                right_pwm=1500,
+                duration_ms=50,
+                source="runtime",
+                created_pc_ms=100,
+            ),
+            finished=True,
+        )
+
+        data = state.to_dict()
+
+        self.assertEqual(data["pose"]["source"], "external")
+        self.assertEqual(data["drive_command"]["left_pwm"], 1500)
+        self.assertTrue(data["finished"])
 
 
 if __name__ == "__main__":

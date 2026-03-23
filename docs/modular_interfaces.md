@@ -1,165 +1,214 @@
-# Модульные интерфейсы GUI / интегратора / автопилота
+# Модульные интерфейсы GUI и внешнего C++ runtime
 
 ## Цель
 
-Подготовить проект к отделению автопилота и/или оценщика положения в отдельный модуль без переделки GUI, UART и визуализации трека.
+Подготовить проект к выносу всей бизнес-логики в единый внешний C++ runtime без переделки GUI, UART и визуализации.
 
-Стабильные обязанности, которые должны остаться внутри Python GUI:
+Что должно остаться внутри Python GUI:
 
 - редактирование и отрисовка трека;
 - настройки COM/UART и логирование;
-- прием и разбор D0/D1/D2/F0;
-- хранение и редактирование параметров геометрии, скоростей, ускорений и PWM-калибровки;
-- выбор источника позы для отрисовки;
-- выбор алгоритма автопилота;
+- прием и разбор `D0/D1/D2/F0`;
+- хранение и редактирование геометрии, speed map, ускорений и PWM-калибровки;
+- выбор источника позы и алгоритма автопилота;
 - маршрутизация команд в `C0`.
 
-## Текущие блоки проекта
+Что должно уйти во внешний C++ runtime:
 
-| Блок | Текущая реализация | Роль |
-| --- | --- | --- |
-| UART transport | `comm/serial_worker.py` | Жизненный цикл порта, RX/TX очереди, поток чтения, метрики |
-| Протокол | `comm/protocol.py` | Парсинг/сборка `D0/D1/D2/B0/F0/C0/A0/A1` |
-| Синхронизация времени | `comm/time_sync.py` | Модель `t_mcu ≈ a * t_pc + b`, единый timestamp для `C0` |
-| Главный runtime GUI | `app/gui_app.py` | Управление режимами, маршрутизация RX/TX, логирование, time sync |
-| Планирование траектории и визуализация | `app/coordinate_tab.py` | Редактор трека, профиль скоростей, внутренняя интеграция позы, выбор режимов |
-| Встроенный автопилот | `utils/pure_pursuit_controller.py` | Built-in алгоритм сопровождения трека |
+- интегратор позы;
+- фильтры и обработка входных скоростей;
+- автопилот;
+- внутренняя публикация событий и логгер runtime;
+- вычисление выходных скоростей/команд.
 
-## Точки стыковки
+## Текущая целевая схема
 
-В коде выделены 4 стабильных контракта из `runtime/contracts.py`.
+Внешний модуль больше не рассматривается как два независимых блока `pose provider` и `autopilot`.
+
+Целевой вариант такой:
+
+1. GUI один раз передает `MissionConfig` при старте миссии.
+2. По приходу `D1` тахо GUI отправляет `TelemetrySnapshot` как event-trigger.
+3. Внутри C++ runtime это считается аналогом входного прерывания.
+4. Runtime сам крутит интегратор, фильтры и автопилот.
+5. Runtime асинхронно публикует наружу:
+   - `pose_update` для GUI;
+   - `control_command` для GUI.
+6. GUI только отображает позу и отправляет пришедшую команду в `C0`.
+
+Поза для GUI в этой схеме не является синхронным запросом. Это отдельный выход runtime, который в будущем будет естественно идти из внутреннего логгера/топика.
+
+## Стабильные контракты
+
+Все ключевые типы описаны в [runtime/contracts.py](/home/necrosii/Programming/Python/Telega_controller/runtime/contracts.py).
 
 ### 1. `MissionConfig`
 
-Передается из GUI в любой модуль интегратора/автопилота при старте миссии.
+Передается из GUI во внешний runtime при старте миссии.
 
 Содержит:
 
-- `track_points`: полилиния трека в мировых координатах;
-- `geometry`: `a1`, `a2`, ширина базы, длина окружности гусеницы;
+- `track_points`: полилиния трека;
+- `geometry`: геометрия телеги;
 - `motion`: целевая скорость, ускорение, торможение, `dt`, минимальный радиус;
-- `builtin_tuning`: текущие коэффициенты встроенного `Pure Pursuit`;
+- `builtin_tuning`: текущие коэффициенты встроенного контроллера;
 - `speed_map`: таблица `PWM <-> speed`;
-- `pwm_correction`: shift/linear для левой и правой гусеницы;
-- `pose_source`: `internal | trolley | external`;
-- `autopilot`: `builtin_pure_pursuit | external`;
-- `telemetry_subscription`: список телеметрических каналов, которые должны поступать наружу.
+- `pwm_correction`: коррекция левой и правой гусеницы;
+- `pose_source`: выбранный источник позы;
+- `autopilot`: выбранный режим автопилота;
+- `telemetry_subscription`: набор каналов телеметрии.
 
 ### 2. `TelemetrySnapshot`
 
-Передается из RX-контура во внешний модуль после приема новых данных.
+Передается из GUI во внешний runtime по входному событию.
 
 Содержит:
 
-- `sync`: состояние time sync, текущий `pc_time_ms`, `mcu_rx_ms`, `mcu_est_ms`, коэффициенты `a` и `b`;
+- `sync`: текущее состояние time sync;
 - `imu`: последний `D0`;
 - `tacho`: последний `D1`;
 - `motor`: последний `D2`.
 
-Это базовый пакет, через который наружу уже можно отдавать:
-
-- данные о треке через `MissionConfig`;
-- показания телеги через `TelemetrySnapshot`;
-- системные настройки через `MissionConfig.geometry`, `MissionConfig.motion`, `MissionConfig.speed_map`, `MissionConfig.pwm_correction`.
+Сейчас основным runtime-trigger является именно приход `D1` тахо. GUI отправляет снимок телеметрии с последними кешированными `D0/D1/D2`, но инициатором расчета считается новый speed sample.
 
 ### 3. `PoseEstimate`
 
-Возвращается от выбранного оценщика положения в GUI.
-
-Содержит:
+Унифицированное описание позы, которое GUI может отрисовать без знания внутренней реализации интегратора:
 
 - `x_m`, `y_m`, `theta_rad`;
-- `source`: `internal | trolley | external`;
+- `source`;
 - `pc_time_ms`;
-- `mcu_time_ms` при наличии.
-
-GUI использует этот контракт для отрисовки положения телеги без знания внутренней реализации оценщика.
+- `mcu_time_ms`.
 
 ### 4. `DriveCommand`
 
-Возвращается от автопилота в GUI перед отправкой в UART.
-
-Содержит:
+Команда, которую GUI отправляет дальше в `C0`:
 
 - `left_pwm`, `right_pwm`;
 - `duration_ms`;
 - `source`;
 - `created_pc_ms`.
 
-Важно: значения в `DriveCommand` трактуются как команды для физических левой/правой гусеницы до аппаратного swap. Swap для coordinate mode остается на стороне GUI перед отправкой `C0`.
+Важно: значения трактуются как команды для физических левой/правой гусеницы до аппаратного swap. Swap для coordinate mode остается на стороне GUI.
 
-## Интерфейсы модулей
+### 5. `ExternalRuntimeState`
 
-### `PoseEstimator`
+Последний снимок выходов внешнего runtime:
 
-Минимальный контракт для внешнего или встроенного оценщика положения:
+- `pose`;
+- `drive_command`;
+- `finished`.
+
+GUI использует его как локальный снимок последних опубликованных выходов C++ runtime.
+
+## Основной интерфейс внешнего модуля
+
+Целевой внешний seam теперь один: `ExternalRuntimeBridge`.
+
+Минимальный контракт:
 
 1. `apply_mission(mission)`
 2. `reset()`
-3. `update_telemetry(snapshot) -> PoseEstimate | None`
-
-### `AutopilotController`
-
-Минимальный контракт для внешнего или встроенного автопилота:
-
-1. `apply_mission(mission)`
-2. `reset()`
-3. `update(snapshot, pose, dt_s) -> DriveCommand | None`
-4. `is_finished() -> bool`
+3. `ingest_telemetry(snapshot)`
+4. `poll_state() -> ExternalRuntimeState`
 5. `stop()`
 
-## Что уже сделано в коде
+Смысл методов:
 
-- В `CoordinateTab` добавлен независимый выбор:
-  - источника позы: `Internal integrator`, `Trolley data`, `External estimator`;
-  - автопилота: `Built-in Pure Pursuit`, `External autopilot`.
-- Состояние этих режимов сохраняется в `app_settings.json` в каноническом виде.
-- `CoordinateTab.build_mission_config()` собирает типизированный пакет миссии.
-- `VirtualControllerApp.build_telemetry_snapshot()` собирает типизированный снимок телеметрии.
-- Добавлены точки подключения:
-  - `VirtualControllerApp.set_external_pose_provider(...)`
-  - `VirtualControllerApp.set_external_autopilot(...)`
-- При выборе внешних режимов GUI теперь работает через контракты `PoseEstimator` и `AutopilotController`.
-- Внутренний интегратор GUI может обновляться и от внешнего `DriveCommand`, а не только от встроенного `Pure Pursuit`.
-- Все отправки `C0` переведены на единый timestamp через `comm.time_sync.control_timestamp_u32(...)`.
+- `apply_mission`: сохранить системную конфигурацию и трек внутри runtime;
+- `reset`: сбросить внутреннее состояние миссии;
+- `ingest_telemetry`: подать входное событие от GUI;
+- `poll_state`: забрать последние опубликованные runtime выходы;
+- `stop`: завершить активную сессию.
 
-## Где стыковать будущий C++ модуль
+Разделенные `PoseEstimator` и `AutopilotController` оставлены в `runtime/contracts.py` только как совместимость с более ранней схемой. Для внешнего C++ runtime целевой контракт теперь именно единый `ExternalRuntimeBridge`.
 
-Есть два безопасных пути.
+## Что уже подготовлено в коде
 
-### Вариант 1. Только внешний автопилот
+- `CoordinateTab.build_mission_config()` собирает типизированный `MissionConfig`.
+- `VirtualControllerApp.build_telemetry_snapshot()` собирает типизированный `TelemetrySnapshot`.
+- `VirtualControllerApp.set_external_runtime(...)` подключает единый внешний runtime.
+- GUI отправляет `TelemetrySnapshot` во внешний runtime только по приходу `D1`.
+- GUI отдельно читает последние `pose` и `drive_command` из `ExternalRuntimeState`.
+- При выборе `External autopilot` команда из внешнего runtime уходит в `C0`.
+- При выборе `External estimator` GUI рисует позу из внешнего runtime.
 
-- GUI оставляет внутренний или trolley pose source.
-- Внешний модуль реализует только `AutopilotController`.
-- На вход получает `MissionConfig` и `TelemetrySnapshot`.
-- На выход отдает `DriveCommand`.
+## Первый транспортный мост GUI <-> C++
 
-### Вариант 2. Внешний оценщик положения + внешний автопилот
+Текущий рабочий мост уже поднят:
 
-- GUI выбирает `External estimator` и `External autopilot`.
-- Внешний модуль реализует оба интерфейса: `PoseEstimator` и `AutopilotController`.
-- GUI остается только редактором, визуализатором, транспортом и маршрутизатором.
+- папка проекта: [cpp_autopilot](/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot);
+- Python-адаптер: [runtime/socket_runtime.py](/home/necrosii/Programming/Python/Telega_controller/runtime/socket_runtime.py);
+- транспорт: TCP `127.0.0.1:8765`;
+- формат: newline-delimited JSON;
+- C++ stub: [cpp_autopilot/src/main.cpp](/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/main.cpp).
 
-## Рекомендация по пакетам для внешнего блока
+GUI по умолчанию использует:
 
-Для первого рабочего контура наружу стоит передавать:
+- `TELEGA_CPP_RUNTIME_HOST`
+- `TELEGA_CPP_RUNTIME_PORT`
 
-- `MissionConfig.track_points`
-- `MissionConfig.geometry`
-- `MissionConfig.motion`
-- `MissionConfig.speed_map`
-- `MissionConfig.pwm_correction`
-- `TelemetrySnapshot.tacho`
-- `TelemetrySnapshot.motor`
-- `TelemetrySnapshot.imu`
-- `TelemetrySnapshot.sync`
+Для обратной совместимости пока поддерживаются и старые переменные:
 
-Минимальный practical subset для быстрого старта внешнего автопилота:
+- `TELEGA_CPP_AUTOPILOT_HOST`
+- `TELEGA_CPP_AUTOPILOT_PORT`
+
+## Транспортный протокол первого этапа
+
+### GUI -> C++
+
+- `hello`
+- `mission`
+- `reset`
+- `telemetry_event`
+- `stop`
+- `shutdown`
+
+`telemetry_event` содержит:
+
+- `trigger`: сейчас `tacho`;
+- `telemetry`: сериализованный `TelemetrySnapshot`.
+
+Семантика завершения:
+
+- `stop` завершает активную runtime-сессию и закрывает текущий клиентский TCP-сеанс;
+- `shutdown` завершает сам внешний C++ процесс и освобождает listening port;
+- для совместимости `kill`, `terminate` и `exit` на стороне stub трактуются как aliases для `shutdown`.
+
+### C++ -> GUI
+
+- `pose_update`
+- `control_command`
+- `runtime_status` при необходимости
+
+`pose_update` должен нести `PoseEstimate` или совместимый словарь.
+
+`control_command` может вернуть:
+
+- прямой `left_pwm` / `right_pwm`;
+- или `left_speed_m_s` / `right_speed_m_s`, которые GUI переведет в PWM через `MissionConfig.speed_map` и `MissionConfig.pwm_correction`.
+
+## Практический минимум данных для внешнего runtime
+
+На первом реальном контуре достаточно:
 
 - трек;
-- `D1` тахо;
 - геометрия телеги;
 - speed map;
-- текущий sync state.
+- PWM correction;
+- `D1` тахо;
+- sync state.
 
-Если внешний модуль будет сам оценивать позу по IMU, тогда `D0` надо считать обязательным.
+Если внутренний C++ интегратор будет использовать IMU, тогда обязательным становится и `D0`.
+
+## Текущий статус stub
+
+Текущий `cpp`-stub пока делает только следующее:
+
+- принимает и печатает все входящие сообщения в своем терминале;
+- сохраняет переданную миссию;
+- на каждый `telemetry_event` публикует:
+  - нулевую позу как `pose_update`;
+  - нулевые скорости как `control_command`.
+
+Этого достаточно, чтобы зафиксировать транспорт, жизненный цикл миссии и точки стыковки GUI <-> C++ до начала реальной разработки C++ runtime.

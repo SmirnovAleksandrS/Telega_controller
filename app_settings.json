@@ -31,7 +31,7 @@
     "right_linear": 1.0
   },
   "manual": {
-    "command_quantum_ms": 10
+    "command_quantum_ms": 100
   },
   "test_mode": false,
   "coordinate": {
@@ -107,12 +107,12 @@
     "right_shift": "0",
     "left_linear": "1",
     "right_linear": "1",
-    "pose_source": "internal",
-    "autopilot_mode": "builtin_pure_pursuit",
-    "view_scale": 0.20000000000000034,
+    "pose_source": "external",
+    "autopilot_mode": "external",
+    "view_scale": 0.24200000000000044,
     "view_pan": [
-      -80.2269627559744,
-      39.21386069182303
+      -83.84462493472901,
+      43.45877143710587
     ]
   }
 }
