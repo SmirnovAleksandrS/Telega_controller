@@ -129,6 +129,30 @@ telega_cpp_autopilot/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/build
 .PHONY : telega_cpp_autopilot/fast
 
+src/event_bus.o: src/event_bus.cpp.o
+.PHONY : src/event_bus.o
+
+# target to build an object file
+src/event_bus.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o
+.PHONY : src/event_bus.cpp.o
+
+src/event_bus.i: src/event_bus.cpp.i
+.PHONY : src/event_bus.i
+
+# target to preprocess a source file
+src/event_bus.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.i
+.PHONY : src/event_bus.cpp.i
+
+src/event_bus.s: src/event_bus.cpp.s
+.PHONY : src/event_bus.s
+
+# target to generate assembly for a file
+src/event_bus.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.s
+.PHONY : src/event_bus.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -153,6 +177,30 @@ src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
 
+src/runtime_graph.o: src/runtime_graph.cpp.o
+.PHONY : src/runtime_graph.o
+
+# target to build an object file
+src/runtime_graph.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o
+.PHONY : src/runtime_graph.cpp.o
+
+src/runtime_graph.i: src/runtime_graph.cpp.i
+.PHONY : src/runtime_graph.i
+
+# target to preprocess a source file
+src/runtime_graph.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.i
+.PHONY : src/runtime_graph.cpp.i
+
+src/runtime_graph.s: src/runtime_graph.cpp.s
+.PHONY : src/runtime_graph.s
+
+# target to generate assembly for a file
+src/runtime_graph.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.s
+.PHONY : src/runtime_graph.cpp.s
+
 src/runtime_hooks.o: src/runtime_hooks.cpp.o
 .PHONY : src/runtime_hooks.o
 
@@ -176,6 +224,174 @@ src/runtime_hooks.s: src/runtime_hooks.cpp.s
 src/runtime_hooks.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.s
 .PHONY : src/runtime_hooks.cpp.s
+
+src/runtime_nodes/autopilot_logic_stub.o: src/runtime_nodes/autopilot_logic_stub.cpp.o
+.PHONY : src/runtime_nodes/autopilot_logic_stub.o
+
+# target to build an object file
+src/runtime_nodes/autopilot_logic_stub.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o
+.PHONY : src/runtime_nodes/autopilot_logic_stub.cpp.o
+
+src/runtime_nodes/autopilot_logic_stub.i: src/runtime_nodes/autopilot_logic_stub.cpp.i
+.PHONY : src/runtime_nodes/autopilot_logic_stub.i
+
+# target to preprocess a source file
+src/runtime_nodes/autopilot_logic_stub.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.i
+.PHONY : src/runtime_nodes/autopilot_logic_stub.cpp.i
+
+src/runtime_nodes/autopilot_logic_stub.s: src/runtime_nodes/autopilot_logic_stub.cpp.s
+.PHONY : src/runtime_nodes/autopilot_logic_stub.s
+
+# target to generate assembly for a file
+src/runtime_nodes/autopilot_logic_stub.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.s
+.PHONY : src/runtime_nodes/autopilot_logic_stub.cpp.s
+
+src/runtime_nodes/integrator_stub.o: src/runtime_nodes/integrator_stub.cpp.o
+.PHONY : src/runtime_nodes/integrator_stub.o
+
+# target to build an object file
+src/runtime_nodes/integrator_stub.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o
+.PHONY : src/runtime_nodes/integrator_stub.cpp.o
+
+src/runtime_nodes/integrator_stub.i: src/runtime_nodes/integrator_stub.cpp.i
+.PHONY : src/runtime_nodes/integrator_stub.i
+
+# target to preprocess a source file
+src/runtime_nodes/integrator_stub.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.i
+.PHONY : src/runtime_nodes/integrator_stub.cpp.i
+
+src/runtime_nodes/integrator_stub.s: src/runtime_nodes/integrator_stub.cpp.s
+.PHONY : src/runtime_nodes/integrator_stub.s
+
+# target to generate assembly for a file
+src/runtime_nodes/integrator_stub.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.s
+.PHONY : src/runtime_nodes/integrator_stub.cpp.s
+
+src/runtime_nodes/logger_stub.o: src/runtime_nodes/logger_stub.cpp.o
+.PHONY : src/runtime_nodes/logger_stub.o
+
+# target to build an object file
+src/runtime_nodes/logger_stub.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o
+.PHONY : src/runtime_nodes/logger_stub.cpp.o
+
+src/runtime_nodes/logger_stub.i: src/runtime_nodes/logger_stub.cpp.i
+.PHONY : src/runtime_nodes/logger_stub.i
+
+# target to preprocess a source file
+src/runtime_nodes/logger_stub.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.i
+.PHONY : src/runtime_nodes/logger_stub.cpp.i
+
+src/runtime_nodes/logger_stub.s: src/runtime_nodes/logger_stub.cpp.s
+.PHONY : src/runtime_nodes/logger_stub.s
+
+# target to generate assembly for a file
+src/runtime_nodes/logger_stub.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.s
+.PHONY : src/runtime_nodes/logger_stub.cpp.s
+
+src/runtime_nodes/mixer_filter_stub.o: src/runtime_nodes/mixer_filter_stub.cpp.o
+.PHONY : src/runtime_nodes/mixer_filter_stub.o
+
+# target to build an object file
+src/runtime_nodes/mixer_filter_stub.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o
+.PHONY : src/runtime_nodes/mixer_filter_stub.cpp.o
+
+src/runtime_nodes/mixer_filter_stub.i: src/runtime_nodes/mixer_filter_stub.cpp.i
+.PHONY : src/runtime_nodes/mixer_filter_stub.i
+
+# target to preprocess a source file
+src/runtime_nodes/mixer_filter_stub.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.i
+.PHONY : src/runtime_nodes/mixer_filter_stub.cpp.i
+
+src/runtime_nodes/mixer_filter_stub.s: src/runtime_nodes/mixer_filter_stub.cpp.s
+.PHONY : src/runtime_nodes/mixer_filter_stub.s
+
+# target to generate assembly for a file
+src/runtime_nodes/mixer_filter_stub.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.s
+.PHONY : src/runtime_nodes/mixer_filter_stub.cpp.s
+
+src/runtime_nodes/tick_source_stub.o: src/runtime_nodes/tick_source_stub.cpp.o
+.PHONY : src/runtime_nodes/tick_source_stub.o
+
+# target to build an object file
+src/runtime_nodes/tick_source_stub.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o
+.PHONY : src/runtime_nodes/tick_source_stub.cpp.o
+
+src/runtime_nodes/tick_source_stub.i: src/runtime_nodes/tick_source_stub.cpp.i
+.PHONY : src/runtime_nodes/tick_source_stub.i
+
+# target to preprocess a source file
+src/runtime_nodes/tick_source_stub.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.i
+.PHONY : src/runtime_nodes/tick_source_stub.cpp.i
+
+src/runtime_nodes/tick_source_stub.s: src/runtime_nodes/tick_source_stub.cpp.s
+.PHONY : src/runtime_nodes/tick_source_stub.s
+
+# target to generate assembly for a file
+src/runtime_nodes/tick_source_stub.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.s
+.PHONY : src/runtime_nodes/tick_source_stub.cpp.s
+
+src/runtime_nodes/trigger_stub.o: src/runtime_nodes/trigger_stub.cpp.o
+.PHONY : src/runtime_nodes/trigger_stub.o
+
+# target to build an object file
+src/runtime_nodes/trigger_stub.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o
+.PHONY : src/runtime_nodes/trigger_stub.cpp.o
+
+src/runtime_nodes/trigger_stub.i: src/runtime_nodes/trigger_stub.cpp.i
+.PHONY : src/runtime_nodes/trigger_stub.i
+
+# target to preprocess a source file
+src/runtime_nodes/trigger_stub.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.i
+.PHONY : src/runtime_nodes/trigger_stub.cpp.i
+
+src/runtime_nodes/trigger_stub.s: src/runtime_nodes/trigger_stub.cpp.s
+.PHONY : src/runtime_nodes/trigger_stub.s
+
+# target to generate assembly for a file
+src/runtime_nodes/trigger_stub.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.s
+.PHONY : src/runtime_nodes/trigger_stub.cpp.s
+
+src/runtime_nodes/uart_rx_stub.o: src/runtime_nodes/uart_rx_stub.cpp.o
+.PHONY : src/runtime_nodes/uart_rx_stub.o
+
+# target to build an object file
+src/runtime_nodes/uart_rx_stub.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o
+.PHONY : src/runtime_nodes/uart_rx_stub.cpp.o
+
+src/runtime_nodes/uart_rx_stub.i: src/runtime_nodes/uart_rx_stub.cpp.i
+.PHONY : src/runtime_nodes/uart_rx_stub.i
+
+# target to preprocess a source file
+src/runtime_nodes/uart_rx_stub.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.i
+.PHONY : src/runtime_nodes/uart_rx_stub.cpp.i
+
+src/runtime_nodes/uart_rx_stub.s: src/runtime_nodes/uart_rx_stub.cpp.s
+.PHONY : src/runtime_nodes/uart_rx_stub.s
+
+# target to generate assembly for a file
+src/runtime_nodes/uart_rx_stub.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/telega_cpp_autopilot.dir/build.make CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.s
+.PHONY : src/runtime_nodes/uart_rx_stub.cpp.s
 
 src/runtime_protocol.o: src/runtime_protocol.cpp.o
 .PHONY : src/runtime_protocol.o
@@ -234,12 +450,39 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... telega_cpp_autopilot"
+	@echo "... src/event_bus.o"
+	@echo "... src/event_bus.i"
+	@echo "... src/event_bus.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/runtime_graph.o"
+	@echo "... src/runtime_graph.i"
+	@echo "... src/runtime_graph.s"
 	@echo "... src/runtime_hooks.o"
 	@echo "... src/runtime_hooks.i"
 	@echo "... src/runtime_hooks.s"
+	@echo "... src/runtime_nodes/autopilot_logic_stub.o"
+	@echo "... src/runtime_nodes/autopilot_logic_stub.i"
+	@echo "... src/runtime_nodes/autopilot_logic_stub.s"
+	@echo "... src/runtime_nodes/integrator_stub.o"
+	@echo "... src/runtime_nodes/integrator_stub.i"
+	@echo "... src/runtime_nodes/integrator_stub.s"
+	@echo "... src/runtime_nodes/logger_stub.o"
+	@echo "... src/runtime_nodes/logger_stub.i"
+	@echo "... src/runtime_nodes/logger_stub.s"
+	@echo "... src/runtime_nodes/mixer_filter_stub.o"
+	@echo "... src/runtime_nodes/mixer_filter_stub.i"
+	@echo "... src/runtime_nodes/mixer_filter_stub.s"
+	@echo "... src/runtime_nodes/tick_source_stub.o"
+	@echo "... src/runtime_nodes/tick_source_stub.i"
+	@echo "... src/runtime_nodes/tick_source_stub.s"
+	@echo "... src/runtime_nodes/trigger_stub.o"
+	@echo "... src/runtime_nodes/trigger_stub.i"
+	@echo "... src/runtime_nodes/trigger_stub.s"
+	@echo "... src/runtime_nodes/uart_rx_stub.o"
+	@echo "... src/runtime_nodes/uart_rx_stub.i"
+	@echo "... src/runtime_nodes/uart_rx_stub.s"
 	@echo "... src/runtime_protocol.o"
 	@echo "... src/runtime_protocol.i"
 	@echo "... src/runtime_protocol.s"

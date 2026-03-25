@@ -33,10 +33,10 @@ from app.styles import PANEL_BG, STATUS_GREEN, STATUS_RED, COLOR_GREEN, COLOR_YE
 from comm.serial_worker import SerialWorker, SerialMetrics, RxEvent, RxError
 from comm.protocol import (
     build_sync_req, build_control,
-    TYPE_D0_IMU, TYPE_D1_TACHO, TYPE_D2_MOTOR,
+    TYPE_D0_IMU, TYPE_D1_TACHO,
     TYPE_B0_SYNC_REQ, TYPE_C0_CONTROL, TYPE_A0_DISABLE_D, TYPE_A1_ENABLE_D,
     SOF, Frame, parse_frame,
-    ImuData, TachoData, MotorData, SyncResp
+    ImuData, TachoData, MotorData, SensorTensorData, SyncResp
 )
 from comm.time_sync import TimeModel, compute_sync_point, control_timestamp_u32, estimate_initial, update_model, SyncPoint
 from utils.timebase import now_ms_monotonic, u32
@@ -49,6 +49,7 @@ from runtime.contracts import (
     MissionConfig,
     MotorTelemetry,
     PoseSourceMode,
+    SensorTensorTelemetry,
     TachoTelemetry,
     TelemetrySnapshot,
     TimeSyncState,
@@ -90,11 +91,11 @@ class VirtualControllerApp:
         self._next_sync_due_ms = now_ms_monotonic() + 500  # shortly after start if connected
 
         # Control sending
-        self._last_control = (0, 0)
+        self._manual_neutral = 1500
+        self._last_control = (self._manual_neutral, self._manual_neutral)
         self._control_period_ms = 100
         self._control_duration_ms = 100
         self._next_control_due_ms = now_ms_monotonic()
-        self._manual_neutral = 1500
         self._active_tab = "Manual"
         self._kill_active = False
         self._kill_tick_ms = 200
@@ -109,6 +110,7 @@ class VirtualControllerApp:
         self._last_imu: Optional[ImuData] = None
         self._last_tacho: Optional[TachoData] = None
         self._last_motor: Optional[MotorData] = None
+        self._last_d3: Optional[SensorTensorData] = None
         self._coord_mission: Optional[MissionConfig] = None
         self._external_runtime: Optional[ExternalRuntimeBridge] = None
         self._last_external_command: Optional[DriveCommand] = None
@@ -484,7 +486,16 @@ class VirtualControllerApp:
                 temp_l=self._last_motor.temp_l,
                 temp_r=self._last_motor.temp_r,
             )
-        return TelemetrySnapshot(sync=sync, imu=imu, tacho=tacho, motor=motor)
+        sensor_tensor = None
+        if self._last_d3 is not None:
+            sensor_tensor = SensorTensorTelemetry(
+                ts_ms=self._last_d3.ts_ms,
+                linear_velocity=self._last_d3.linear_velocity,
+                angular_velocity=self._last_d3.angular_velocity,
+                linear_quality=self._last_d3.linear_quality,
+                angular_quality=self._last_d3.angular_quality,
+            )
+        return TelemetrySnapshot(sync=sync, imu=imu, tacho=tacho, motor=motor, sensor_tensor=sensor_tensor)
 
     def _mission_uses_external_runtime(self, mission: Optional[MissionConfig] = None) -> bool:
         active_mission = self._coord_mission if mission is None else mission
@@ -699,8 +710,6 @@ class VirtualControllerApp:
         if not self.worker.is_open:
             return
         ts_u32 = self._control_timestamp_u32()
-        # Coordinate mode uses track swap for non-symmetric commands.
-        # Stop command is symmetric, but we keep same C0 path and duration policy.
         pkt = build_control(ts_u32, self._manual_neutral, self._manual_neutral, self._control_duration_ms)
         self.worker.send(pkt)
 
@@ -750,8 +759,7 @@ class VirtualControllerApp:
             self._send_coordinate_stop()
             return
         if self.worker.is_open and not test_mode:
-            # Swap tracks for coordinate mode (per hardware wiring).
-            payload = build_control(self._control_timestamp_u32(), right_cmd, left_cmd, command_duration_ms)
+            payload = build_control(self._control_timestamp_u32(), left_cmd, right_cmd, command_duration_ms)
             self.worker.send(payload)
         self.root.after(self._coord_tick_ms, self._coord_send_tick)
 
@@ -939,7 +947,7 @@ class VirtualControllerApp:
                     "msg": self._msg_to_dict(parsed),
                     "time_model": {"a": self.time_model.a, "b": self.time_model.b, "lock": self.time_model.have_lock}
                 }
-                if isinstance(parsed, (ImuData, TachoData, MotorData)):
+                if isinstance(parsed, (ImuData, TachoData, MotorData, SensorTensorData)):
                     log_obj["rx_time"] = parsed.ts_ms
                 try:
                     line = self.logger.format_line(log_obj)
@@ -962,6 +970,10 @@ class VirtualControllerApp:
                     self._last_motor = parsed
                     self._last_mcu_ts_u32 = parsed.ts_ms
                     self._update_motor(parsed)
+                elif isinstance(parsed, SensorTensorData):
+                    self._last_d3 = parsed
+                    self._last_mcu_ts_u32 = parsed.ts_ms
+                    self._update_mcu_time_label()
                 elif isinstance(parsed, SyncResp):
                     self._handle_sync_resp(parsed, ev.pc_rx_ms)
                 elif isinstance(parsed, (ImuData, TachoData)):
@@ -977,7 +989,7 @@ class VirtualControllerApp:
                     self.coord_tab.add_actual_tacho(parsed.left_rpm, parsed.right_rpm, parsed.ts_ms)
                     # External runtime treats the incoming speed sample as the main processing trigger.
                     self._ingest_external_runtime_snapshot(self.build_telemetry_snapshot(ev.pc_rx_ms))
-                elif not isinstance(parsed, (MotorData, SyncResp, ImuData)):
+                elif not isinstance(parsed, (MotorData, SensorTensorData, SyncResp, ImuData)):
                     # unknown Frame - ignore
                     pass
 
@@ -1307,6 +1319,8 @@ class VirtualControllerApp:
         # Keep logger stable and explicit
         if isinstance(msg, MotorData):
             return {"type": "D2", **asdict(msg)}
+        if isinstance(msg, SensorTensorData):
+            return {"type": "D3", **asdict(msg)}
         if isinstance(msg, ImuData):
             return {"type": "D0", **asdict(msg)}
         if isinstance(msg, TachoData):

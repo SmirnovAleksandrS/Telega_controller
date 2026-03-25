@@ -24,6 +24,7 @@ class TelemetryChannel(str, Enum):
     IMU = "imu"
     TACHO = "tacho"
     MOTOR = "motor"
+    SENSOR_TENSOR = "sensor_tensor"
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,15 @@ class MotorTelemetry:
 
 
 @dataclass(frozen=True)
+class SensorTensorTelemetry:
+    ts_ms: int
+    linear_velocity: tuple[float, float, float]
+    angular_velocity: tuple[float, float, float]
+    linear_quality: tuple[float, float, float]
+    angular_quality: tuple[float, float, float]
+
+
+@dataclass(frozen=True)
 class TimeSyncState:
     pc_time_ms: int
     have_lock: bool
@@ -141,6 +151,7 @@ class TelemetrySnapshot:
     imu: Optional[ImuTelemetry] = None
     tacho: Optional[TachoTelemetry] = None
     motor: Optional[MotorTelemetry] = None
+    sensor_tensor: Optional[SensorTensorTelemetry] = None
 
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)

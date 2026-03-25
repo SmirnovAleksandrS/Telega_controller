@@ -72,10 +72,24 @@ include CMakeFiles/telega_cpp_autopilot.dir/flags.make
 CMakeFiles/telega_cpp_autopilot.dir/codegen:
 .PHONY : CMakeFiles/telega_cpp_autopilot.dir/codegen
 
+CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/event_bus.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/event_bus.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/event_bus.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/event_bus.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.s
+
 CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
 CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/main.cpp
 CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/main.cpp
 
 CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.i: cmake_force
@@ -86,10 +100,24 @@ CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/main.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.s
 
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_graph.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_graph.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_graph.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_graph.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.s
+
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_hooks.cpp
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_hooks.cpp
 
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.i: cmake_force
@@ -100,10 +128,108 @@ CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_hooks.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.s
 
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/autopilot_logic_stub.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/autopilot_logic_stub.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/autopilot_logic_stub.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/autopilot_logic_stub.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.s
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/integrator_stub.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/integrator_stub.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/integrator_stub.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/integrator_stub.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.s
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/logger_stub.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/logger_stub.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/logger_stub.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/logger_stub.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.s
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/mixer_filter_stub.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/mixer_filter_stub.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/mixer_filter_stub.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/mixer_filter_stub.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.s
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/tick_source_stub.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/tick_source_stub.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/tick_source_stub.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/tick_source_stub.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.s
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/trigger_stub.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/trigger_stub.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/trigger_stub.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/trigger_stub.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.s
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/uart_rx_stub.cpp
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/uart_rx_stub.cpp
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/uart_rx_stub.cpp > CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.i
+
+CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_nodes/uart_rx_stub.cpp -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.s
+
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_protocol.cpp
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_protocol.cpp
 
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.i: cmake_force
@@ -117,7 +243,7 @@ CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.s: cmake_force
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/flags.make
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o: /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_server.cpp
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o -MF CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o.d -o CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o -c /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/src/runtime_server.cpp
 
 CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.i: cmake_force
@@ -130,22 +256,40 @@ CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.s: cmake_force
 
 # Object files for target telega_cpp_autopilot
 telega_cpp_autopilot_OBJECTS = \
+"CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o" \
 "CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o" \
 "CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o" \
+"CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o" \
 "CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o" \
 "CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o"
 
 # External object files for target telega_cpp_autopilot
 telega_cpp_autopilot_EXTERNAL_OBJECTS =
 
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/event_bus.cpp.o
 telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/main.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_graph.cpp.o
 telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_hooks.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/autopilot_logic_stub.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/integrator_stub.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/logger_stub.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/mixer_filter_stub.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/tick_source_stub.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/trigger_stub.cpp.o
+telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_nodes/uart_rx_stub.cpp.o
 telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_protocol.cpp.o
 telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o
 telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/build.make
 telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/compiler_depend.ts
 telega_cpp_autopilot: CMakeFiles/telega_cpp_autopilot.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Linking CXX executable telega_cpp_autopilot"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Linking CXX executable telega_cpp_autopilot"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/telega_cpp_autopilot.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

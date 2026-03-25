@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -7,9 +8,21 @@
 
 namespace telega::autopilot {
 
+class RuntimeGraph;
+
+// Session-scoped state owned by the TCP runtime server. The graph lives here so
+// all GUI commands within one connection operate on the same autopilot instance.
 struct RuntimeState {
+    RuntimeState();
+    ~RuntimeState();
+    RuntimeState(RuntimeState&&) noexcept;
+    RuntimeState& operator=(RuntimeState&&) noexcept;
+    RuntimeState(const RuntimeState&) = delete;
+    RuntimeState& operator=(const RuntimeState&) = delete;
+
     std::string stored_mission_json;
     bool mission_loaded = false;
+    std::unique_ptr<RuntimeGraph> graph;
 };
 
 struct PoseUpdate {

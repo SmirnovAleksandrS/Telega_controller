@@ -2,11 +2,14 @@
 
 #include <cmath>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include "telega_cpp_autopilot/runtime_graph.hpp"
 
 namespace telega::autopilot {
 namespace {
@@ -52,7 +55,23 @@ std::string JsonQuoted(const std::string& value) {
     return "\"" + escaped + "\"";
 }
 
+void EnsureRuntimeGraph(RuntimeState& state) {
+    if (state.graph == nullptr) {
+        // The bridge keeps lazy construction so startup stays cheap and a custom
+        // replacement graph can later be injected without changing message flow.
+        state.graph = std::make_unique<RuntimeGraph>();
+    }
+}
+
 }  // namespace
+
+RuntimeState::RuntimeState() = default;
+
+RuntimeState::~RuntimeState() = default;
+
+RuntimeState::RuntimeState(RuntimeState&&) noexcept = default;
+
+RuntimeState& RuntimeState::operator=(RuntimeState&&) noexcept = default;
 
 ClientConnection::ClientConnection(int socket_fd)
     : socket_fd_(socket_fd) {
@@ -125,28 +144,51 @@ GuiInterruptResult DefaultOnGuiMessageInterrupt(
         case GuiMessageKind::kMission:
             state.stored_mission_json = message.raw_json;
             state.mission_loaded = true;
+            EnsureRuntimeGraph(state);
+            // Reset-on-mission-load keeps the stage-1 graph deterministic until
+            // real mission parsing/configuration is introduced.
+            state.graph->reset();
             std::cout << "[state] mission stored, bytes=" << state.stored_mission_json.size() << std::endl;
             break;
 
         case GuiMessageKind::kReset:
+            EnsureRuntimeGraph(state);
+            state.graph->reset();
             std::cout << "[state] runtime reset" << std::endl;
             break;
 
         case GuiMessageKind::kTelemetryEvent:
         case GuiMessageKind::kControlTick: {
-            PoseUpdate pose;
-            if (message.pc_time_ms.has_value()) {
-                pose.pc_time_ms = static_cast<int>(std::lround(*message.pc_time_ms));
-            }
-            if (!SendPoseUpdate(client, pose)) {
-                result.close_session = true;
-                break;
+            EnsureRuntimeGraph(state);
+            const std::uint32_t timestamp_ms = message.pc_time_ms.has_value()
+                ? static_cast<std::uint32_t>(std::lround(*message.pc_time_ms))
+                : 0U;
+            // For now both telemetry and control-tick messages advance the same
+            // graph step. The distinction remains available at protocol level.
+            const RuntimeOutputs outputs = state.graph->processTelemetryEvent(timestamp_ms);
+
+            if (outputs.pose.has_value()) {
+                const datPosition& position = *outputs.pose;
+                PoseUpdate pose;
+                pose.x_m = position.X.A;
+                pose.y_m = position.Y.A;
+                pose.theta_rad = position.Theta.A;
+                pose.pc_time_ms = static_cast<int>(position.timestamp);
+                if (!SendPoseUpdate(client, pose)) {
+                    result.close_session = true;
+                    break;
+                }
             }
 
-            PwmCommand command;
-            command.duration_ms = message.duration_ms;
-            if (!SendPwmCommand(client, command)) {
-                result.close_session = true;
+            if (outputs.pwm_command.has_value()) {
+                const datPwmCommand& stub_command = *outputs.pwm_command;
+                PwmCommand command;
+                command.left_pwm = stub_command.left_pwm;
+                command.right_pwm = stub_command.right_pwm;
+                command.duration_ms = message.duration_ms;
+                if (!SendPwmCommand(client, command)) {
+                    result.close_session = true;
+                }
             }
             break;
         }
@@ -157,6 +199,9 @@ GuiInterruptResult DefaultOnGuiMessageInterrupt(
                       << ", mission_bytes=" << state.stored_mission_json.size() << std::endl;
             state.stored_mission_json.clear();
             state.mission_loaded = false;
+            if (state.graph != nullptr) {
+                state.graph->reset();
+            }
             result.close_session = true;
             break;
 
@@ -166,6 +211,9 @@ GuiInterruptResult DefaultOnGuiMessageInterrupt(
                       << ", mission_bytes=" << state.stored_mission_json.size() << std::endl;
             state.stored_mission_json.clear();
             state.mission_loaded = false;
+            if (state.graph != nullptr) {
+                state.graph->reset();
+            }
             result.close_session = true;
             result.shutdown_server = true;
             break;

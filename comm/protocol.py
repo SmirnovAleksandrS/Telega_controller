@@ -11,6 +11,7 @@ Message payload formats (little-endian):
 D0: u32 ts_ms + 9 * float32
 D1: u32 ts_ms + i32 left_rpm + i32 right_rpm
 D2: u32 ts_ms + i16 cur_l + i16 cur_r + i16 volt_l + i16 volt_r + i16 temp_l + i16 temp_r
+D3: u32 ts_ms + 12 * float32
 B0: u16 seq + u32 pc_time_ms (u32)
 F0: u32 t2_mcu_rx_ms + u32 t3_mcu_tx_ms
 C0: u32 ts_ms + i16 left_cmd + i16 right_cmd + u16 duration_ms
@@ -30,6 +31,7 @@ SOF = 0x7E
 TYPE_D0_IMU   = 0xD0
 TYPE_D1_TACHO = 0xD1
 TYPE_D2_MOTOR = 0xD2
+TYPE_D3_SENSOR_TENSOR = 0xD3
 TYPE_B0_SYNC_REQ  = 0xB0
 TYPE_F0_SYNC_RESP = 0xF0
 TYPE_C0_CONTROL   = 0xC0
@@ -65,11 +67,19 @@ class MotorData:
     temp_r: int
 
 @dataclass
+class SensorTensorData:
+    ts_ms: int
+    linear_velocity: tuple[float, float, float]
+    angular_velocity: tuple[float, float, float]
+    linear_quality: tuple[float, float, float]
+    angular_quality: tuple[float, float, float]
+
+@dataclass
 class SyncResp:
     t2_rx_ms: int
     t3_tx_ms: int
 
-ParsedMsg = Union[ImuData, TachoData, MotorData, SyncResp, Frame]
+ParsedMsg = Union[ImuData, TachoData, MotorData, SensorTensorData, SyncResp, Frame]
 
 class StreamParser:
     """
@@ -144,7 +154,18 @@ def parse_frame(frame: Frame) -> ParsedMsg:
             ts_ms=ts_ms,
             current_l=cur_l, current_r=cur_r,
             voltage_l=volt_l, voltage_r=volt_r,
-            temp_l=temp_l, temp_r=temp_r
+            temp_l=temp_l, temp_r=temp_r,
+        )
+
+    if t == TYPE_D3_SENSOR_TENSOR and len(p) == 52:
+        ts_ms = struct.unpack_from("<I", p, 0)[0]
+        vals = struct.unpack_from("<12f", p, 4)
+        return SensorTensorData(
+            ts_ms=ts_ms,
+            linear_velocity=vals[0:3],
+            angular_velocity=vals[3:6],
+            linear_quality=vals[6:9],
+            angular_quality=vals[9:12],
         )
 
     if t == TYPE_F0_SYNC_RESP and len(p) == 8:

@@ -1,6 +1,6 @@
 {
   "com": {
-    "port": "/dev/ttyUSB0",
+    "port": "/dev/ttyACM0",
     "baud": 115200
   },
   "deviation": {
@@ -90,7 +90,7 @@
         ]
       }
     ],
-    "scale": "20 cm",
+    "scale": "50 cm",
     "map_path": "",
     "map_scale_factor": 2.2557692307692307,
     "map_rotation_deg": 43.84615384615385,
@@ -99,20 +99,20 @@
       210.0
     ],
     "min_radius_cm": "50",
-    "v_cm": "1",
-    "accel": "1",
-    "decel": "1",
+    "v_cm": "5",
+    "accel": "2",
+    "decel": "2",
     "dt_ms": "100.0",
     "left_shift": "0",
     "right_shift": "0",
     "left_linear": "1",
     "right_linear": "1",
-    "pose_source": "external",
-    "autopilot_mode": "external",
-    "view_scale": 0.24200000000000044,
+    "pose_source": "trolley",
+    "autopilot_mode": "builtin_pure_pursuit",
+    "view_scale": 0.4715895382000011,
     "view_pan": [
-      -83.84462493472901,
-      43.45877143710587
+      -111.2637718533928,
+      110.25045474447985
     ]
   }
 }

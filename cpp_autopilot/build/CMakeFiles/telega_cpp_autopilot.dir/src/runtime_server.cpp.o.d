@@ -175,4 +175,19 @@ CMakeFiles/telega_cpp_autopilot.dir/src/runtime_server.cpp.o: \
  /usr/include/bits/getopt_posix.h /usr/include/bits/getopt_core.h \
  /usr/include/bits/unistd_ext.h /usr/include/linux/close_range.h \
  /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/include/telega_cpp_autopilot/runtime_hooks.hpp \
+ /usr/include/c++/15.2.1/memory \
+ /usr/include/c++/15.2.1/bits/stl_tempbuf.h \
+ /usr/include/c++/15.2.1/bits/stl_raw_storage_iter.h \
+ /usr/include/c++/15.2.1/bits/align.h \
+ /usr/include/c++/15.2.1/bits/unique_ptr.h \
+ /usr/include/c++/15.2.1/bits/shared_ptr.h \
+ /usr/include/c++/15.2.1/bits/shared_ptr_base.h \
+ /usr/include/c++/15.2.1/bits/allocated_ptr.h \
+ /usr/include/c++/15.2.1/ext/concurrence.h \
+ /usr/include/c++/15.2.1/bits/shared_ptr_atomic.h \
+ /usr/include/c++/15.2.1/bits/atomic_base.h \
+ /usr/include/c++/15.2.1/bits/atomic_lockfree_defines.h \
+ /usr/include/c++/15.2.1/backward/auto_ptr.h \
+ /usr/include/c++/15.2.1/pstl/glue_memory_defs.h \
+ /usr/include/c++/15.2.1/pstl/execution_defs.h \
  /home/necrosii/Programming/Python/Telega_controller/cpp_autopilot/include/telega_cpp_autopilot/runtime_protocol.hpp

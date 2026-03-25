@@ -1207,9 +1207,8 @@ class CoordinateTab(ttk.Frame):
             SpeedMapPoint(self._speed_map.pwm_3, self._speed_map.speed_3),
         ]
         for left_pwm, right_pwm in self._expected_cmds:
-            # Command swap is applied when sending to hardware; simulate physical tracks.
-            v_left = pwm_to_speed(right_pwm, points)
-            v_right = pwm_to_speed(left_pwm, points)
+            v_left = pwm_to_speed(left_pwm, points)
+            v_right = pwm_to_speed(right_pwm, points)
             pose = self._integrate_pose(pose, v_left, v_right, self._expected_dt_s)
             self._expected_poses.append(pose)
 
@@ -1865,6 +1864,7 @@ class CoordinateTab(ttk.Frame):
             ("D0", "D0 - IMU data"),
             ("D1", "D1 - tacho RPM"),
             ("D2", "D2 - motor currents/voltage/temp"),
+            ("D3", "D3 - sensor tensor data"),
         ])
         add_group("E: Errors", [("E0", "E0 - error code")])
         add_group("F: Responses", [("F0", "F0 - sync response")])

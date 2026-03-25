@@ -20,8 +20,8 @@ from utils.speed_map import SpeedMapPoint, pwm_to_speed
 
 @dataclass
 class ManualControlState:
-    left_cmd: int = 0
-    right_cmd: int = 0
+    left_cmd: int = 1500
+    right_cmd: int = 1500
     # user coefficients
     left_shift: float = 0.0
     right_shift: float = 0.0
@@ -345,6 +345,7 @@ class ManualTab(ttk.Frame):
             ("D0", "D0 - IMU data"),
             ("D1", "D1 - tacho RPM"),
             ("D2", "D2 - motor currents/voltage/temp"),
+            ("D3", "D3 - sensor tensor data"),
         ])
         add_group("E: Errors", [("E0", "E0 - error code")])
         add_group("F: Responses", [("F0", "F0 - sync response")])

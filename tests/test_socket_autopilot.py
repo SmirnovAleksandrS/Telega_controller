@@ -15,6 +15,7 @@ from runtime.contracts import (
     MotionSettings,
     PoseSourceMode,
     PwmCorrection,
+    SensorTensorTelemetry,
     SpeedMapEntry,
     TelemetrySnapshot,
     TelemetrySubscription,
@@ -140,7 +141,14 @@ class SocketAutopilotTests(unittest.TestCase):
                 offset_b=0.0,
                 mcu_rx_ms=None,
                 mcu_est_ms=None,
-            )
+            ),
+            sensor_tensor=SensorTensorTelemetry(
+                ts_ms=77,
+                linear_velocity=(1.0, 2.0, 3.0),
+                angular_velocity=(4.0, 5.0, 6.0),
+                linear_quality=(7.0, 8.0, 9.0),
+                angular_quality=(10.0, 11.0, 12.0),
+            ),
         )
 
         client.apply_mission(mission)
@@ -175,6 +183,7 @@ class SocketAutopilotTests(unittest.TestCase):
         self.assertEqual(msg_types[:4], ["hello", "mission", "reset", "telemetry_event"])
         self.assertEqual(self.server.received[1]["mission"]["autopilot"], "external")
         self.assertEqual(self.server.received[3]["telemetry"]["sync"]["pc_time_ms"], 1234)
+        self.assertEqual(self.server.received[3]["telemetry"]["sensor_tensor"]["ts_ms"], 77)
 
     def test_client_can_request_server_shutdown(self) -> None:
         client = SocketAutopilotClient(port=self.server.server_address[1])

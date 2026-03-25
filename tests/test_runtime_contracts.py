@@ -14,8 +14,11 @@ from runtime.contracts import (
     PoseEstimate,
     PoseSourceMode,
     PwmCorrection,
+    SensorTensorTelemetry,
     SpeedMapEntry,
+    TelemetrySnapshot,
     TelemetrySubscription,
+    TimeSyncState,
     TrackPoint,
 )
 
@@ -104,6 +107,30 @@ class RuntimeContractsTests(unittest.TestCase):
         self.assertEqual(data["pose"]["source"], "external")
         self.assertEqual(data["drive_command"]["left_pwm"], 1500)
         self.assertTrue(data["finished"])
+
+    def test_telemetry_snapshot_serializes_sensor_tensor(self) -> None:
+        snapshot = TelemetrySnapshot(
+            sync=TimeSyncState(
+                pc_time_ms=1,
+                have_lock=False,
+                scale_a=1.0,
+                offset_b=0.0,
+                mcu_rx_ms=None,
+                mcu_est_ms=None,
+            ),
+            sensor_tensor=SensorTensorTelemetry(
+                ts_ms=2,
+                linear_velocity=(1.0, 2.0, 3.0),
+                angular_velocity=(4.0, 5.0, 6.0),
+                linear_quality=(7.0, 8.0, 9.0),
+                angular_quality=(10.0, 11.0, 12.0),
+            ),
+        )
+
+        data = snapshot.to_dict()
+
+        self.assertEqual(data["sensor_tensor"]["ts_ms"], 2)
+        self.assertEqual(data["sensor_tensor"]["linear_velocity"], [1.0, 2.0, 3.0])
 
 
 if __name__ == "__main__":

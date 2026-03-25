@@ -83,10 +83,18 @@ Shutdown behavior is split intentionally:
 ## Source layout
 
 - `src/main.cpp`: only signal handling and `RunServer(...)`.
+- `src/event_bus.cpp`: stage-1 event bus core with `bitMask`, double-buffer topic storage, and inline dispatch.
+- `src/runtime_graph.cpp`: graph assembly, topic registry, and topology wiring.
+- `src/runtime_nodes/*.cpp`: one stub node per file (`MixerFilter`, `Integrator`, `Trigger`, `Logger`, and so on).
 - `src/runtime_server.cpp`: TCP server lifecycle, accept loop, start/stop.
 - `src/runtime_protocol.cpp`: parsing inbound GUI messages into typed `GuiMessage`.
 - `src/runtime_hooks.cpp`: default runtime logic and outbound helpers.
 - `include/telega_cpp_autopilot/runtime_hooks.hpp`: the main extension seam.
+- `include/telega_cpp_autopilot/event_bus.hpp`: bus API, topic descriptors, subscriber bindings, and dispatch state.
+- `include/telega_cpp_autopilot/event_payloads.hpp`: stage-1 payload types for bus topics.
+- `include/telega_cpp_autopilot/runtime_graph.hpp`: public stub graph entry point used by the runtime hook.
+- `include/telega_cpp_autopilot/runtime_node_interfaces.hpp`: small direct-call interfaces for hot-path node chaining.
+- `include/telega_cpp_autopilot/runtime_nodes/*.hpp`: per-node contracts and stub implementations.
 
 ## Main hook and send functions
 
