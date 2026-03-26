@@ -1,6 +1,6 @@
 {
   "com": {
-    "port": "/dev/ttyACM0",
+    "port": "/dev/ttyUSB0",
     "baud": 115200
   },
   "deviation": {
@@ -14,7 +14,7 @@
   "geometry": {
     "a1_cm": 20.0,
     "a2_cm": 20.0,
-    "drive_wheel_diameter_cm": 15.0
+    "drive_wheel_diameter_cm": 6.0
   },
   "speed_map": {
     "pwm_1": 2000.0,
@@ -26,7 +26,7 @@
   },
   "joystick": {
     "left_shift": 0.0,
-    "right_shift": 0.0,
+    "right_shift": -23.0,
     "left_linear": 1.0,
     "right_linear": 1.0
   },
@@ -49,16 +49,16 @@
       },
       {
         "anchor": [
-          207.40301173566417,
-          -55.78660476444065
+          209.72083046483212,
+          -59.47090024957748
         ],
         "handle_in": [
-          -7.617019752655153,
-          66.37688641599502
+          -1.0649187088367853,
+          68.9505046247969
         ],
         "handle_out": [
-          7.617019752655153,
-          -66.37688641599502
+          1.0649187088367853,
+          -68.9505046247969
         ]
       },
       {
@@ -90,7 +90,7 @@
         ]
       }
     ],
-    "scale": "50 cm",
+    "scale": "5 m",
     "map_path": "",
     "map_scale_factor": 2.2557692307692307,
     "map_rotation_deg": 43.84615384615385,
@@ -107,12 +107,12 @@
     "right_shift": "0",
     "left_linear": "1",
     "right_linear": "1",
-    "pose_source": "trolley",
-    "autopilot_mode": "builtin_pure_pursuit",
-    "view_scale": 0.4715895382000011,
+    "pose_source": "external",
+    "autopilot_mode": "external",
+    "view_scale": 0.9189945972714465,
     "view_pan": [
-      -111.2637718533928,
-      110.25045474447985
+      -79.11603471260806,
+      186.12695480163228
     ]
   }
 }

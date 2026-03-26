@@ -104,6 +104,7 @@ class CoordinateTab(ttk.Frame):
         self.on_state_change = on_state_change
         self._grid_cells = 14
         self._canvas_size = 420
+        self._magnifier_zoom = 4.0
         self._hit_radius = 8
         self._handle_len = 60
         self._samples_per_seg = 60
@@ -112,13 +113,14 @@ class CoordinateTab(ttk.Frame):
         self._view_pan = (0.0, 0.0)
         self._pan_start: Optional[tuple[float, float]] = None
         self._pan_origin: Optional[tuple[float, float]] = None
+        self._pan_canvas: Optional[tk.Canvas] = None
         self._map_path = ""
         self._map_image = None
-        self._map_image_tk = None
-        self._map_image_cache_size: Optional[tuple[int, int, int]] = None
+        self._map_image_cache: dict[tuple[int, int, int], ImageTk.PhotoImage] = {}
         self._map_center = self._center()
         self._map_drag_start: Optional[tuple[float, float]] = None
         self._map_drag_origin: Optional[tuple[float, float]] = None
+        self._map_drag_canvas: Optional[tk.Canvas] = None
         self._map_drag_moved = False
         self._map_drag_threshold_px = 3.0
         self._map_click_add_point: Optional[tuple[float, float]] = None
@@ -176,34 +178,49 @@ class CoordinateTab(ttk.Frame):
     # ---------------- UI ----------------
 
     def _build(self) -> None:
-        self.columnconfigure(0, weight=0)
-        self.columnconfigure(1, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=0)
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=0)
 
         left = ttk.Frame(self)
-        left.grid(row=0, column=0, sticky="nw")
+        left.grid(row=0, column=0, sticky="nsew")
+        left.columnconfigure(0, weight=1)
+        left.rowconfigure(0, weight=1)
+
+        route_views = ttk.Frame(left)
+        route_views.grid(row=0, column=0, sticky="nsew")
+        route_views.columnconfigure(0, weight=1)
+        route_views.rowconfigure(0, weight=1)
 
         self.canvas = tk.Canvas(
-            left,
+            route_views,
             width=self._canvas_size,
             height=self._canvas_size,
             bg=PANEL_BG,
             highlightthickness=1,
             highlightbackground="#606060",
         )
-        self.canvas.grid(row=0, column=0, sticky="nw")
-        self.canvas.bind("<ButtonPress-1>", self._on_press)
-        self.canvas.bind("<B1-Motion>", self._on_drag)
-        self.canvas.bind("<ButtonRelease-1>", self._on_release)
-        self.canvas.bind("<Double-Button-1>", self._on_double_click)
-        self.canvas.bind("<Motion>", self._on_motion)
-        self.canvas.bind("<ButtonPress-3>", self._on_pan_start)
-        self.canvas.bind("<B3-Motion>", self._on_pan_drag)
-        self.canvas.bind("<ButtonRelease-3>", self._on_pan_end)
-        self.canvas.bind("<MouseWheel>", self._on_zoom)
-        self.canvas.bind("<Button-4>", self._on_zoom)
-        self.canvas.bind("<Button-5>", self._on_zoom)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+
+        magnifier_row = ttk.Frame(route_views)
+        magnifier_row.grid(row=1, column=0, sticky="w", pady=(8, 0))
+        self.magnifier_canvas = tk.Canvas(
+            magnifier_row,
+            width=self._canvas_size // 2,
+            height=self._canvas_size // 2,
+            bg=PANEL_BG,
+            highlightthickness=1,
+            highlightbackground="#606060",
+        )
+        self.magnifier_canvas.grid(row=0, column=0, sticky="nw")
+
+        self._view_canvas_zoom: dict[tk.Canvas, float] = {
+            self.canvas: 1.0,
+            self.magnifier_canvas: self._magnifier_zoom,
+        }
+        self._bind_route_canvas(self.canvas, self._on_main_canvas_configure)
+        self._bind_route_canvas(self.magnifier_canvas, self._on_magnifier_canvas_configure)
 
         scale_row = ttk.Frame(left)
         scale_row.grid(row=1, column=0, sticky="w", pady=(6, 0))
@@ -211,7 +228,7 @@ class CoordinateTab(ttk.Frame):
         self.scale_box = ttk.Combobox(
             scale_row,
             textvariable=self._scale_var,
-            values=["10 cm", "20 cm", "50 cm", "1 m", "2 m"],
+            values=["10 cm", "20 cm", "50 cm", "1 m", "2 m", "5 m", "10 m", "15 m", "25 m", "50 m"],
             width=6,
             state="readonly",
         )
@@ -425,19 +442,75 @@ class CoordinateTab(ttk.Frame):
         half = self._canvas_size / 2.0
         return (half, half)
 
-    def _to_view(self, pt: tuple[float, float]) -> tuple[float, float]:
-        # View transform: scale around center, then pan.
-        cx, cy = self._center()
-        px, py = self._view_pan
-        return ((pt[0] - cx) * self._view_scale + cx + px,
-                (pt[1] - cy) * self._view_scale + cy + py)
+    def _bind_route_canvas(
+        self,
+        canvas: tk.Canvas,
+        on_configure: Optional[Callable[[tk.Event], None]] = None,
+    ) -> None:
+        canvas.bind("<ButtonPress-1>", self._on_press)
+        canvas.bind("<B1-Motion>", self._on_drag)
+        canvas.bind("<ButtonRelease-1>", self._on_release)
+        canvas.bind("<Double-Button-1>", self._on_double_click)
+        canvas.bind("<Motion>", self._on_motion)
+        canvas.bind("<ButtonPress-3>", self._on_pan_start)
+        canvas.bind("<B3-Motion>", self._on_pan_drag)
+        canvas.bind("<ButtonRelease-3>", self._on_pan_end)
+        canvas.bind("<MouseWheel>", self._on_zoom)
+        canvas.bind("<Button-4>", self._on_zoom)
+        canvas.bind("<Button-5>", self._on_zoom)
+        if on_configure is not None:
+            canvas.bind("<Configure>", on_configure)
 
-    def _from_view(self, pt: tuple[float, float]) -> tuple[float, float]:
-        # Inverse view transform for input handling.
-        cx, cy = self._center()
-        px, py = self._view_pan
-        return ((pt[0] - cx - px) / self._view_scale + cx,
-                (pt[1] - cy - py) / self._view_scale + cy)
+    def _route_canvases(self) -> tuple[tk.Canvas, ...]:
+        return (self.canvas, self.magnifier_canvas)
+
+    def _resolve_canvas(self, canvas: Optional[tk.Canvas]) -> tk.Canvas:
+        return self.canvas if canvas is None else canvas
+
+    def _canvas_dimensions(self, canvas: Optional[tk.Canvas] = None) -> tuple[float, float]:
+        current = self._resolve_canvas(canvas)
+        width = int(current.winfo_width())
+        height = int(current.winfo_height())
+        if width <= 1:
+            width = int(float(current.cget("width")))
+        if height <= 1:
+            height = int(float(current.cget("height")))
+        return (float(max(width, 1)), float(max(height, 1)))
+
+    def _canvas_zoom(self, canvas: Optional[tk.Canvas] = None) -> float:
+        current = self._resolve_canvas(canvas)
+        return float(self._view_canvas_zoom.get(current, 1.0))
+
+    def _canvas_fit_scale(self, canvas: Optional[tk.Canvas] = None) -> float:
+        width, height = self._canvas_dimensions(canvas)
+        return min(width, height) / self._canvas_size
+
+    def _canvas_display_scale(self, canvas: Optional[tk.Canvas] = None) -> float:
+        return max(1e-9, self._view_scale * self._canvas_fit_scale(canvas) * self._canvas_zoom(canvas))
+
+    def _canvas_screen_center(self, canvas: Optional[tk.Canvas] = None) -> tuple[float, float]:
+        width, height = self._canvas_dimensions(canvas)
+        return (width * 0.5, height * 0.5)
+
+    def _to_view(self, pt: tuple[float, float], canvas: Optional[tk.Canvas] = None) -> tuple[float, float]:
+        model_cx, model_cy = self._center()
+        view_cx, view_cy = self._canvas_screen_center(canvas)
+        pan_x, pan_y = self._view_pan
+        scale = self._canvas_display_scale(canvas)
+        return (
+            view_cx + (pt[0] - model_cx + pan_x) * scale,
+            view_cy + (pt[1] - model_cy + pan_y) * scale,
+        )
+
+    def _from_view(self, pt: tuple[float, float], canvas: Optional[tk.Canvas] = None) -> tuple[float, float]:
+        model_cx, model_cy = self._center()
+        view_cx, view_cy = self._canvas_screen_center(canvas)
+        pan_x, pan_y = self._view_pan
+        scale = self._canvas_display_scale(canvas)
+        return (
+            (pt[0] - view_cx) / scale - pan_x + model_cx,
+            (pt[1] - view_cy) / scale - pan_y + model_cy,
+        )
 
     def _cell_px(self) -> float:
         return self._canvas_size / self._grid_cells
@@ -498,8 +571,8 @@ class CoordinateTab(ttk.Frame):
         model_size = self._map_model_size()
         if model_size is None:
             return None
-        w = model_size[0] * self._view_scale
-        h = model_size[1] * self._view_scale
+        w = model_size[0] * self._canvas_display_scale(self.canvas)
+        h = model_size[1] * self._canvas_display_scale(self.canvas)
         if w <= 0.0 or h <= 0.0:
             return None
         angle_rad = math.radians(self._map_rotation_deg())
@@ -510,15 +583,15 @@ class CoordinateTab(ttk.Frame):
         cx, cy = self._to_view(self._map_center)
         return (cx - box_w * 0.5, cy - box_h * 0.5, cx + box_w * 0.5, cy + box_h * 0.5)
 
-    def _hit_map(self, x: float, y: float) -> bool:
+    def _hit_map(self, x: float, y: float, canvas: Optional[tk.Canvas] = None) -> bool:
         model_size = self._map_model_size()
         if model_size is None:
             return False
-        w = model_size[0] * self._view_scale
-        h = model_size[1] * self._view_scale
+        w = model_size[0] * self._canvas_display_scale(canvas)
+        h = model_size[1] * self._canvas_display_scale(canvas)
         if w <= 0.0 or h <= 0.0:
             return False
-        cx, cy = self._to_view(self._map_center)
+        cx, cy = self._to_view(self._map_center, canvas)
         dx = x - cx
         dy = y - cy
         angle_rad = math.radians(self._map_rotation_deg())
@@ -533,6 +606,31 @@ class CoordinateTab(ttk.Frame):
         cx, cy = self._center()
         px_per_m = 1.0 / self._meters_per_px()
         return (cx + pt[0] * px_per_m, cy - pt[1] * px_per_m)
+
+    def _desired_magnifier_size(self, width: float, height: float) -> tuple[int, int]:
+        return (
+            max(self._canvas_size // 2, int(round(width * 0.5))),
+            max(self._canvas_size // 2, int(round(height * 0.5))),
+        )
+
+    def _sync_magnifier_size(self, width: float, height: float) -> None:
+        desired_w, desired_h = self._desired_magnifier_size(width, height)
+        current_w = int(float(self.magnifier_canvas.cget("width")))
+        current_h = int(float(self.magnifier_canvas.cget("height")))
+        if current_w == desired_w and current_h == desired_h:
+            return
+        self.magnifier_canvas.configure(width=desired_w, height=desired_h)
+
+    def _on_main_canvas_configure(self, event: tk.Event) -> None:
+        if not hasattr(self, "rpm_canvas") or not hasattr(self, "nodes"):
+            return
+        self._sync_magnifier_size(float(event.width), float(event.height))
+        self._redraw(recompute_profile=False, notify_state=False)
+
+    def _on_magnifier_canvas_configure(self, _event: tk.Event) -> None:
+        if not hasattr(self, "rpm_canvas") or not hasattr(self, "nodes"):
+            return
+        self._redraw(recompute_profile=False, notify_state=False)
 
     def set_geometry(self, a1_cm: float, a2_cm: float, drive_wheel_diameter_cm: float) -> None:
         self._a1_cm = max(a1_cm, 0.0)
@@ -662,8 +760,7 @@ class CoordinateTab(ttk.Frame):
         if not map_loaded:
             self._map_path = ""
             self._map_image = None
-            self._map_image_tk = None
-            self._map_image_cache_size = None
+            self._map_image_cache.clear()
             self._map_file_var.set("")
             self.map_scale_slider.state(["disabled"])
             self.map_rot_slider.state(["disabled"])
@@ -932,16 +1029,19 @@ class CoordinateTab(ttk.Frame):
     # ---------------- Drawing ----------------
 
     def _redraw(self, *, recompute_profile: bool = True, notify_state: bool = True) -> None:
-        self.canvas.delete("map")
-        self.canvas.delete("grid")
-        self.canvas.delete("curve")
-        self.canvas.delete("nodes")
-        self.canvas.delete("hover")
+        for canvas in self._route_canvases():
+            canvas.delete("map")
+            canvas.delete("grid")
+            canvas.delete("curve")
+            canvas.delete("nodes")
+            canvas.delete("hover")
+            canvas.delete("marker")
         self.rpm_canvas.delete("hover")
-        self._draw_map()
-        self._draw_grid()
-        self._draw_curve()
-        self._draw_nodes()
+        for canvas in self._route_canvases():
+            self._draw_map(canvas)
+            self._draw_grid(canvas)
+            self._draw_curve(canvas)
+            self._draw_nodes(canvas)
         if recompute_profile:
             self._recompute_profile()
         if notify_state:
@@ -963,7 +1063,7 @@ class CoordinateTab(ttk.Frame):
         self._state_notify_after_id = None
         self._notify_state_change()
 
-    def _draw_map(self) -> None:
+    def _draw_map(self, canvas: tk.Canvas) -> None:
         if self._map_image is None:
             return
         model_size = self._map_model_size()
@@ -972,27 +1072,32 @@ class CoordinateTab(ttk.Frame):
         model_w, model_h = model_size
         if model_w <= 0.0 or model_h <= 0.0:
             return
-        draw_w = max(1, int(round(model_w * self._view_scale)))
-        draw_h = max(1, int(round(model_h * self._view_scale)))
+        draw_scale = self._canvas_display_scale(canvas)
+        draw_w = max(1, int(round(model_w * draw_scale)))
+        draw_h = max(1, int(round(model_h * draw_scale)))
         angle_deg = self._map_rotation_deg()
         angle_key = int(round((angle_deg % 360.0) * 10.0))
         cache_key = (draw_w, draw_h, angle_key)
-        if self._map_image_cache_size != cache_key:
+        image = self._map_image_cache.get(cache_key)
+        if image is None:
             resized = self._map_image.resize((draw_w, draw_h), Image.Resampling.LANCZOS)
             if angle_key != 0:
                 rotated = resized.rotate(-angle_deg, resample=Image.Resampling.BICUBIC, expand=True)
             else:
                 rotated = resized
-            self._map_image_tk = ImageTk.PhotoImage(rotated)
-            self._map_image_cache_size = cache_key
-        vx, vy = self._to_view(self._map_center)
-        self.canvas.create_image(vx, vy, image=self._map_image_tk, anchor="center", tags="map")
+            if len(self._map_image_cache) >= 12:
+                self._map_image_cache.clear()
+            image = ImageTk.PhotoImage(rotated)
+            self._map_image_cache[cache_key] = image
+        vx, vy = self._to_view(self._map_center, canvas)
+        canvas.create_image(vx, vy, image=image, anchor="center", tags="map")
 
-    def _draw_grid(self) -> None:
+    def _draw_grid(self, canvas: tk.Canvas) -> None:
         step = self._cell_px()
         # Compute visible model bounds to draw an infinite grid.
-        min_model = self._from_view((0.0, 0.0))
-        max_model = self._from_view((self._canvas_size, self._canvas_size))
+        canvas_w, canvas_h = self._canvas_dimensions(canvas)
+        min_model = self._from_view((0.0, 0.0), canvas)
+        max_model = self._from_view((canvas_w, canvas_h), canvas)
         min_x = min(min_model[0], max_model[0])
         max_x = max(min_model[0], max_model[0])
         min_y = min(min_model[1], max_model[1])
@@ -1005,14 +1110,14 @@ class CoordinateTab(ttk.Frame):
 
         for i in range(start_y, end_y + 1):
             pos = i * step
-            y = self._to_view((0.0, pos))[1]
-            self.canvas.create_line(0, y, self._canvas_size, y, fill="#8a8a8a", tags="grid")
+            y = self._to_view((0.0, pos), canvas)[1]
+            canvas.create_line(0, y, canvas_w, y, fill="#8a8a8a", tags="grid")
         for i in range(start_x, end_x + 1):
             pos = i * step
-            x = self._to_view((pos, 0.0))[0]
-            self.canvas.create_line(x, 0, x, self._canvas_size, fill="#8a8a8a", tags="grid")
+            x = self._to_view((pos, 0.0), canvas)[0]
+            canvas.create_line(x, 0, x, canvas_h, fill="#8a8a8a", tags="grid")
 
-    def _draw_curve(self) -> None:
+    def _draw_curve(self, canvas: tk.Canvas) -> None:
         segments = self._segments()
         if not segments:
             return
@@ -1026,7 +1131,7 @@ class CoordinateTab(ttk.Frame):
             for i in range(self._samples_per_seg + 1):
                 t = i / self._samples_per_seg
                 x, y = cubic_point(p0, p1, p2, p3, t)
-                vx, vy = self._to_view((x, y))
+                vx, vy = self._to_view((x, y), canvas)
                 points.extend([vx, vy])
                 w_pt = self._canvas_to_world((x, y))
                 if prev_world is not None:
@@ -1042,16 +1147,16 @@ class CoordinateTab(ttk.Frame):
                 self._samples.append({"x": x, "y": y, "nx": nx, "ny": ny, "t": t, "seg": seg_idx, "s": s_world})
                 a1_px = self._meters_to_px(self._a1_cm / 100.0)
                 a2_px = self._meters_to_px(self._a2_cm / 100.0)
-                left_v = self._to_view((x + nx * a1_px, y + ny * a1_px))
-                right_v = self._to_view((x - nx * a2_px, y - ny * a2_px))
+                left_v = self._to_view((x + nx * a1_px, y + ny * a1_px), canvas)
+                right_v = self._to_view((x - nx * a2_px, y - ny * a2_px), canvas)
                 left_pts.extend([left_v[0], left_v[1]])
                 right_pts.extend([right_v[0], right_v[1]])
         color = self._curve_color(segments)
         if left_pts:
-            self.canvas.create_line(left_pts, fill="#9aa6e8", width=1, smooth=True, tags="curve")
+            canvas.create_line(left_pts, fill="#9aa6e8", width=1, smooth=True, tags="curve")
         if right_pts:
-            self.canvas.create_line(right_pts, fill="#9aa6e8", width=1, smooth=True, tags="curve")
-        self.canvas.create_line(points, fill=color, width=2, smooth=True, tags="curve")
+            canvas.create_line(right_pts, fill="#9aa6e8", width=1, smooth=True, tags="curve")
+        canvas.create_line(points, fill=color, width=2, smooth=True, tags="curve")
 
     def _recompute_profile(self) -> None:
         segments = self._segments()
@@ -1247,39 +1352,40 @@ class CoordinateTab(ttk.Frame):
         return (x, y), left, right
 
     def _draw_markers(self) -> None:
-        self.canvas.delete("marker")
-        if self._expected_world is not None:
-            self._draw_pose_marker(self._expected_world, "#00aa00")
-        if self._actual_world is not None:
-            self._draw_pose_marker(self._actual_world, "#ff8800")
-        if self._external_world is not None and self.get_pose_source_mode() == PoseSourceMode.EXTERNAL:
-            self._draw_pose_marker(self._external_world, "#0088aa")
+        for canvas in self._route_canvases():
+            canvas.delete("marker")
+            if self._expected_world is not None:
+                self._draw_pose_marker(canvas, self._expected_world, "#00aa00")
+            if self._actual_world is not None:
+                self._draw_pose_marker(canvas, self._actual_world, "#ff8800")
+            if self._external_world is not None and self.get_pose_source_mode() == PoseSourceMode.EXTERNAL:
+                self._draw_pose_marker(canvas, self._external_world, "#0088aa")
 
-    def _draw_pose_marker(self, pose: tuple[float, float, float], color: str) -> None:
+    def _draw_pose_marker(self, canvas: tk.Canvas, pose: tuple[float, float, float], color: str) -> None:
         center, left, right = self._track_centers(pose)
         for pt in (center, left, right):
             mx, my = self._world_to_model(pt)
-            vx, vy = self._to_view((mx, my))
-            self.canvas.create_oval(vx - 4, vy - 4, vx + 4, vy + 4, fill=color, outline="#000000", tags="marker")
+            vx, vy = self._to_view((mx, my), canvas)
+            canvas.create_oval(vx - 4, vy - 4, vx + 4, vy + 4, fill=color, outline="#000000", tags="marker")
 
-    def _draw_nodes(self) -> None:
+    def _draw_nodes(self, canvas: tk.Canvas) -> None:
         for idx, node in enumerate(self.nodes):
             ax, ay = node.anchor
-            vx, vy = self._to_view((ax, ay))
-            self._draw_point(vx, vy, 5, "#000000", "nodes")
+            vx, vy = self._to_view((ax, ay), canvas)
+            self._draw_point(canvas, vx, vy, 5, "#000000", "nodes")
             if node.handle_in:
                 hx, hy = self._handle_pos(node.anchor, node.handle_in)
-                hvx, hvy = self._to_view((hx, hy))
-                self.canvas.create_line(vx, vy, hvx, hvy, fill="#5a5a5a", tags="nodes")
-                self._draw_point(hvx, hvy, 4, "#3a6bbf", "nodes")
+                hvx, hvy = self._to_view((hx, hy), canvas)
+                canvas.create_line(vx, vy, hvx, hvy, fill="#5a5a5a", tags="nodes")
+                self._draw_point(canvas, hvx, hvy, 4, "#3a6bbf", "nodes")
             if node.handle_out:
                 hx, hy = self._handle_pos(node.anchor, node.handle_out)
-                hvx, hvy = self._to_view((hx, hy))
-                self.canvas.create_line(vx, vy, hvx, hvy, fill="#5a5a5a", tags="nodes")
-                self._draw_point(hvx, hvy, 4, "#3a6bbf", "nodes")
+                hvx, hvy = self._to_view((hx, hy), canvas)
+                canvas.create_line(vx, vy, hvx, hvy, fill="#5a5a5a", tags="nodes")
+                self._draw_point(canvas, hvx, hvy, 4, "#3a6bbf", "nodes")
 
-    def _draw_point(self, x: float, y: float, r: int, fill: str, tag: str) -> None:
-        self.canvas.create_oval(x - r, y - r, x + r, y + r, fill=fill, outline="#000000", tags=tag)
+    def _draw_point(self, canvas: tk.Canvas, x: float, y: float, r: int, fill: str, tag: str) -> None:
+        canvas.create_oval(x - r, y - r, x + r, y + r, fill=fill, outline="#000000", tags=tag)
 
     def _curve_color(self, segments: list[tuple[tuple[float, float], ...]]) -> str:
         min_allowed = self._min_radius_m()
@@ -1344,18 +1450,18 @@ class CoordinateTab(ttk.Frame):
         self._map_image_scale_label_var.set("1.00x")
         self._map_rotation_var.set(0.0)
         self._map_rotation_label_var.set("0.0 deg")
-        self._map_image_cache_size = None
+        self._map_image_cache.clear()
         self._redraw()
 
     def _on_map_scale_change(self, _value: str | None = None) -> None:
         self._map_image_scale_label_var.set(f"{self._map_scale_factor():.2f}x")
-        self._map_image_cache_size = None
+        self._map_image_cache.clear()
         if self._map_image is not None:
             self._redraw(recompute_profile=False, notify_state=True)
 
     def _on_map_rotation_change(self, _value: str | None = None) -> None:
         self._map_rotation_label_var.set(f"{self._map_rotation_deg():.1f} deg")
-        self._map_image_cache_size = None
+        self._map_image_cache.clear()
         if self._map_image is not None:
             self._redraw(recompute_profile=False, notify_state=True)
 
@@ -1380,8 +1486,7 @@ class CoordinateTab(ttk.Frame):
             return False
         self._map_path = path
         self._map_image = loaded
-        self._map_image_tk = None
-        self._map_image_cache_size = None
+        self._map_image_cache.clear()
         self._map_file_var.set(os.path.basename(path))
         if recenter:
             self._map_center = self._center()
@@ -1394,28 +1499,32 @@ class CoordinateTab(ttk.Frame):
     def _clear_map_drag_state(self) -> None:
         self._map_drag_start = None
         self._map_drag_origin = None
+        self._map_drag_canvas = None
         self._map_drag_moved = False
         self._map_click_add_point = None
 
     def _on_press(self, e: tk.Event) -> None:
         if not self._editable:
             return
+        canvas = self._resolve_canvas(e.widget if isinstance(e.widget, tk.Canvas) else None)
         self._clear_map_drag_state()
-        hit = self._hit_test(e.x, e.y)
+        hit = self._hit_test(e.x, e.y, canvas)
         if hit:
             self._drag_target = hit
             return
-        if self._hit_map(e.x, e.y):
+        if self._hit_map(e.x, e.y, canvas):
             self._map_drag_start = (e.x, e.y)
             self._map_drag_origin = self._map_center
+            self._map_drag_canvas = canvas
             self._map_drag_moved = False
-            self._map_click_add_point = self._from_view((e.x, e.y))
+            self._map_click_add_point = self._from_view((e.x, e.y), canvas)
             return
-        mx, my = self._from_view((e.x, e.y))
+        mx, my = self._from_view((e.x, e.y), canvas)
         self._add_node(mx, my)
         self._drag_target = ("anchor", len(self.nodes) - 1)
 
     def _on_drag(self, e: tk.Event) -> None:
+        canvas = self._resolve_canvas(e.widget if isinstance(e.widget, tk.Canvas) else None)
         if self._drag_target:
             kind, idx = self._drag_target
             node = self.nodes[idx]
@@ -1424,29 +1533,29 @@ class CoordinateTab(ttk.Frame):
                     return
                 if not self._editable:
                     return
-                mx, my = self._from_view((e.x, e.y))
+                mx, my = self._from_view((e.x, e.y), canvas)
                 node.anchor = (mx, my)
             elif kind == "in":
                 if not self._editable:
                     return
-                mx, my = self._from_view((e.x, e.y))
+                mx, my = self._from_view((e.x, e.y), canvas)
                 offset = self._handle_offset(node.anchor, mx, my)
                 self._set_symmetric_handle(node, idx, "in", offset)
             elif kind == "out":
                 if idx == 0:
-                    _, my = self._from_view((e.x, e.y))
+                    _, my = self._from_view((e.x, e.y), canvas)
                     dy = my - node.anchor[1]
                     offset = (0.0, min(dy, -5.0))
                     node.handle_out = offset
                 else:
                     if not self._editable:
                         return
-                    mx, my = self._from_view((e.x, e.y))
+                    mx, my = self._from_view((e.x, e.y), canvas)
                     offset = self._handle_offset(node.anchor, mx, my)
                     self._set_symmetric_handle(node, idx, "out", offset)
             self._redraw()
             return
-        if self._map_drag_start is None or self._map_drag_origin is None:
+        if self._map_drag_start is None or self._map_drag_origin is None or self._map_drag_canvas is None:
             return
         dx = e.x - self._map_drag_start[0]
         dy = e.y - self._map_drag_start[1]
@@ -1455,7 +1564,7 @@ class CoordinateTab(ttk.Frame):
             self._map_click_add_point = None
         if not self._map_drag_moved:
             return
-        inv_scale = max(self._view_scale, 1e-9)
+        inv_scale = self._canvas_display_scale(self._map_drag_canvas)
         self._map_center = (
             self._map_drag_origin[0] + dx / inv_scale,
             self._map_drag_origin[1] + dy / inv_scale,
@@ -1515,7 +1624,8 @@ class CoordinateTab(ttk.Frame):
     def _on_double_click(self, e: tk.Event) -> None:
         if not self._editable:
             return
-        hit = self._hit_test(e.x, e.y)
+        canvas = self._resolve_canvas(e.widget if isinstance(e.widget, tk.Canvas) else None)
+        hit = self._hit_test(e.x, e.y, canvas)
         if not hit:
             return
         kind, idx = hit
@@ -1525,13 +1635,14 @@ class CoordinateTab(ttk.Frame):
         self._redraw()
 
     def _on_motion(self, e: tk.Event) -> None:
+        canvas = self._resolve_canvas(e.widget if isinstance(e.widget, tk.Canvas) else None)
         self._clear_hover()
         if not self._samples:
             return
         nearest = None
         min_dist = None
         for sample in self._samples:
-            sx, sy = self._to_view((sample["x"], sample["y"]))
+            sx, sy = self._to_view((sample["x"], sample["y"]), canvas)
             dx = sx - e.x
             dy = sy - e.y
             dist = math.hypot(dx, dy)
@@ -1573,7 +1684,6 @@ class CoordinateTab(ttk.Frame):
     def _draw_hover(self, sample: dict[str, float]) -> None:
         x = sample["x"]
         y = sample["y"]
-        vx, vy = self._to_view((x, y))
         nx = sample["nx"]
         ny = sample["ny"]
         s = sample.get("s", 0.0)
@@ -1581,18 +1691,18 @@ class CoordinateTab(ttk.Frame):
         a2_px = self._meters_to_px(self._a2_cm / 100.0)
         left_m = (x + nx * a1_px, y + ny * a1_px)
         right_m = (x - nx * a2_px, y - ny * a2_px)
-        left = self._to_view(left_m)
-        right = self._to_view(right_m)
-
-        self._draw_point(vx, vy, 4, "#000000", "hover")
-        self._draw_point(left[0], left[1], 4, "#3a6bbf", "hover")
-        self._draw_point(right[0], right[1], 4, "#3a6bbf", "hover")
-
         radii = self._curvature_radii(sample)
         speeds = self._speed_at_s(s)
-        self._draw_radius_label((vx + 8, vy - 8), radii["center"], speeds[0], "hover")
-        self._draw_radius_label((left[0] + 8, left[1] - 8), radii["left"], speeds[1], "hover")
-        self._draw_radius_label((right[0] + 8, right[1] - 8), radii["right"], speeds[2], "hover")
+        for canvas in self._route_canvases():
+            vx, vy = self._to_view((x, y), canvas)
+            left = self._to_view(left_m, canvas)
+            right = self._to_view(right_m, canvas)
+            self._draw_point(canvas, vx, vy, 4, "#000000", "hover")
+            self._draw_point(canvas, left[0], left[1], 4, "#3a6bbf", "hover")
+            self._draw_point(canvas, right[0], right[1], 4, "#3a6bbf", "hover")
+            self._draw_radius_label(canvas, (vx + 8, vy - 8), radii["center"], speeds[0], "hover")
+            self._draw_radius_label(canvas, (left[0] + 8, left[1] - 8), radii["left"], speeds[1], "hover")
+            self._draw_radius_label(canvas, (right[0] + 8, right[1] - 8), radii["right"], speeds[2], "hover")
         if speeds[1] is not None and speeds[2] is not None:
             self._set_pwm_from_speeds(speeds[1], speeds[2])
 
@@ -1604,14 +1714,21 @@ class CoordinateTab(ttk.Frame):
         if self.on_stop:
             self.on_stop()
 
-    def _draw_radius_label(self, pos: tuple[float, float], radius_m: Optional[float], speed_m_s: Optional[float], tag: str) -> None:
+    def _draw_radius_label(
+        self,
+        canvas: tk.Canvas,
+        pos: tuple[float, float],
+        radius_m: Optional[float],
+        speed_m_s: Optional[float],
+        tag: str,
+    ) -> None:
         label = "R=inf"
         if radius_m is not None:
             radius_cm = abs(radius_m) * 100.0
             label = f"R={radius_cm:.1f} cm"
         if speed_m_s is not None:
             label = f"{label}\nV={speed_m_s:.2f} m/s"
-        self.canvas.create_text(pos[0], pos[1], text=label, fill="#202020", anchor="w", tags=tag)
+        canvas.create_text(pos[0], pos[1], text=label, fill="#202020", anchor="w", tags=tag)
 
     def _speed_at_s(self, s: float) -> tuple[Optional[float], Optional[float], Optional[float]]:
         if not self._profile_s:
@@ -1695,7 +1812,8 @@ class CoordinateTab(ttk.Frame):
         return nearest
 
     def _clear_hover(self) -> None:
-        self.canvas.delete("hover")
+        for canvas in self._route_canvases():
+            canvas.delete("hover")
         self.rpm_canvas.delete("hover")
 
     def _draw_rpm_hover(self, s: float) -> None:
@@ -1760,24 +1878,28 @@ class CoordinateTab(ttk.Frame):
         return {"center": r_center, "left": r_left, "right": r_right}
 
     def _on_pan_start(self, e: tk.Event) -> None:
+        self._pan_canvas = self._resolve_canvas(e.widget if isinstance(e.widget, tk.Canvas) else None)
         self._pan_start = (e.x, e.y)
         self._pan_origin = self._view_pan
 
     def _on_pan_drag(self, e: tk.Event) -> None:
-        if self._pan_start is None or self._pan_origin is None:
+        if self._pan_start is None or self._pan_origin is None or self._pan_canvas is None:
             return
         dx = e.x - self._pan_start[0]
         dy = e.y - self._pan_start[1]
-        self._view_pan = (self._pan_origin[0] + dx, self._pan_origin[1] + dy)
+        scale = self._canvas_display_scale(self._pan_canvas)
+        self._view_pan = (self._pan_origin[0] + dx / scale, self._pan_origin[1] + dy / scale)
         self._redraw(recompute_profile=False, notify_state=False)
         self._schedule_state_notify()
 
     def _on_pan_end(self, _e: tk.Event) -> None:
         self._pan_start = None
         self._pan_origin = None
+        self._pan_canvas = None
         self._schedule_state_notify(0)
 
     def _on_zoom(self, e: tk.Event) -> None:
+        canvas = self._resolve_canvas(e.widget if isinstance(e.widget, tk.Canvas) else None)
         if getattr(e, "num", None) == 4:
             delta = 1
         elif getattr(e, "num", None) == 5:
@@ -1790,30 +1912,31 @@ class CoordinateTab(ttk.Frame):
         if abs(new_scale - old_scale) <= 1e-6:
             return
         # Keep the point under cursor fixed while zooming.
-        mx, my = self._from_view((e.x, e.y))
-        cx, cy = self._center()
-        px, py = self._view_pan
+        mx, my = self._from_view((e.x, e.y), canvas)
+        view_cx, view_cy = self._canvas_screen_center(canvas)
         self._view_scale = new_scale
-        new_px = e.x - cx - (mx - cx) * new_scale
-        new_py = e.y - cy - (my - cy) * new_scale
-        self._view_pan = (new_px, new_py)
+        model_cx, model_cy = self._center()
+        new_display_scale = self._canvas_display_scale(canvas)
+        new_pan_x = (e.x - view_cx) / new_display_scale - (mx - model_cx)
+        new_pan_y = (e.y - view_cy) / new_display_scale - (my - model_cy)
+        self._view_pan = (new_pan_x, new_pan_y)
         self._redraw(recompute_profile=False, notify_state=False)
         self._schedule_state_notify()
 
-    def _hit_test(self, x: float, y: float) -> Optional[tuple[str, int]]:
+    def _hit_test(self, x: float, y: float, canvas: Optional[tk.Canvas] = None) -> Optional[tuple[str, int]]:
         for idx, node in enumerate(self.nodes):
             ax, ay = node.anchor
-            vx, vy = self._to_view((ax, ay))
+            vx, vy = self._to_view((ax, ay), canvas)
             if self._dist(vx, vy, x, y) <= self._hit_radius:
                 return ("anchor", idx)
             if node.handle_in:
                 hx, hy = self._handle_pos(node.anchor, node.handle_in)
-                hvx, hvy = self._to_view((hx, hy))
+                hvx, hvy = self._to_view((hx, hy), canvas)
                 if self._dist(hvx, hvy, x, y) <= self._hit_radius:
                     return ("in", idx)
             if node.handle_out:
                 hx, hy = self._handle_pos(node.anchor, node.handle_out)
-                hvx, hvy = self._to_view((hx, hy))
+                hvx, hvy = self._to_view((hx, hy), canvas)
                 if self._dist(hvx, hvy, x, y) <= self._hit_radius:
                     return ("out", idx)
         return None
