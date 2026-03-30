@@ -16,6 +16,17 @@ class _DummyVar:
         self._value = value
 
 
+class _DummyNumericVar:
+    def __init__(self, value: float) -> None:
+        self._value = value
+
+    def get(self) -> float:
+        return self._value
+
+    def set(self, value: float) -> None:
+        self._value = value
+
+
 class _DummyCanvas:
     def __init__(self, width: int, height: int) -> None:
         self._width = width
@@ -44,6 +55,11 @@ class CoordinateTabViewTests(unittest.TestCase):
         tab._view_pan = (12.5, -7.5)
         tab._magnifier_zoom = 4.0
         tab._scale_var = _DummyVar("1 m")
+        tab._map_image_scale_var = _DummyNumericVar(1.0)
+        tab._map_rotation_var = _DummyNumericVar(0.0)
+        tab._map_image_scale_text_var = _DummyVar("1.00")
+        tab._map_rotation_text_var = _DummyVar("0.0")
+        tab._map_image = None
         tab.canvas = _DummyCanvas(420, 420)
         tab.magnifier_canvas = _DummyCanvas(210, 210)
         tab._view_canvas_zoom = {
@@ -89,6 +105,30 @@ class CoordinateTabViewTests(unittest.TestCase):
             model = tab._from_view(view, canvas)
             self.assertAlmostEqual(model[0], point[0])
             self.assertAlmostEqual(model[1], point[1])
+
+    def test_route_canvases_support_legacy_single_canvas_mode(self) -> None:
+        tab = self._make_tab()
+        tab.magnifier_canvas = None
+
+        self.assertEqual(tab._route_canvases(), (tab.canvas,))
+
+    def test_manual_map_scale_entry_clamps_to_allowed_range(self) -> None:
+        tab = self._make_tab()
+        tab._map_image_scale_text_var.set("7.50")
+
+        tab._commit_map_scale_text()
+
+        self.assertEqual(tab._map_image_scale_var.get(), 6.0)
+        self.assertEqual(tab._map_image_scale_text_var.get(), "6.00")
+
+    def test_manual_map_rotation_entry_clamps_to_allowed_range(self) -> None:
+        tab = self._make_tab()
+        tab._map_rotation_text_var.set("-15")
+
+        tab._commit_map_rotation_text()
+
+        self.assertEqual(tab._map_rotation_var.get(), 0.0)
+        self.assertEqual(tab._map_rotation_text_var.get(), "0.0")
 
 
 if __name__ == "__main__":

@@ -59,12 +59,13 @@ from runtime.socket_runtime import SocketExternalRuntime
 from log.parsed_logger import ParsedLogger
 
 class VirtualControllerApp:
-    def __init__(self) -> None:
+    def __init__(self, *, fixed_route_canvases: bool = False) -> None:
         self.root = tk.Tk()
         self.root.title("Virtual controller")
         self.root.configure(bg=PANEL_BG)
         self.root.minsize(980, 560)
         self._is_shutting_down = False
+        self._fixed_route_canvases = bool(fixed_route_canvases)
 
         self.worker = SerialWorker()
         self.worker.on_send = self._log_tx_raw
@@ -205,6 +206,7 @@ class VirtualControllerApp:
             on_start=self._on_coord_start,
             on_stop=self._on_coord_stop,
             on_state_change=self._save_settings,
+            dynamic_route_views=not self._fixed_route_canvases,
         )
         self.nb.add(self.coord_tab, text="Coordinate")
         self._apply_geometry_settings()

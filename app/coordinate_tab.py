@@ -10,9 +10,11 @@ from __future__ import annotations
 import os
 import math
 from dataclasses import dataclass
+import queue
+import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
 
 try:
     from PIL import Image, ImageTk, UnidentifiedImageError
@@ -61,6 +63,19 @@ class BezierNode:
     handle_out: Optional[tuple[float, float]] = None  # offset from anchor
 
 
+@dataclass(frozen=True)
+class _MapRenderSpec:
+    canvas_key: str
+    draw_w: int
+    draw_h: int
+    angle_deg: float
+    angle_key: int
+
+    @property
+    def cache_key(self) -> tuple[str, int, int, int]:
+        return (self.canvas_key, self.draw_w, self.draw_h, self.angle_key)
+
+
 POSE_SOURCE_LABELS: dict[PoseSourceMode, str] = {
     PoseSourceMode.INTERNAL: "Internal integrator",
     PoseSourceMode.TROLLEY: "Trolley data",
@@ -96,12 +111,14 @@ class CoordinateTab(ttk.Frame):
         on_start: Optional[Callable[[], None]] = None,
         on_stop: Optional[Callable[[], None]] = None,
         on_state_change: Optional[Callable[[], None]] = None,
+        dynamic_route_views: bool = True,
     ) -> None:
         super().__init__(master, padding=6)
 
         self.on_start = on_start
         self.on_stop = on_stop
         self.on_state_change = on_state_change
+        self._dynamic_route_views = bool(dynamic_route_views)
         self._grid_cells = 14
         self._canvas_size = 420
         self._magnifier_zoom = 4.0
@@ -116,7 +133,22 @@ class CoordinateTab(ttk.Frame):
         self._pan_canvas: Optional[tk.Canvas] = None
         self._map_path = ""
         self._map_image = None
-        self._map_image_cache: dict[tuple[int, int, int], ImageTk.PhotoImage] = {}
+        self._map_image_cache: dict[tuple[str, int, int, int], ImageTk.PhotoImage] = {}
+        self._map_render_generation = 0
+        self._map_render_preview = False
+        self._map_render_idle_ms = 180
+        self._map_render_after_id: str | None = None
+        self._map_render_lock = threading.Lock()
+        self._map_render_request: Optional[tuple[int, Any, tuple[_MapRenderSpec, ...]]] = None
+        self._map_render_results: "queue.Queue[tuple[int, _MapRenderSpec, str, Any]]" = queue.Queue()
+        self._map_render_wake = threading.Event()
+        self._map_render_stop = threading.Event()
+        self._map_render_thread: Optional[threading.Thread] = None
+        self._map_render_stage_order: tuple[tuple[str, float], ...] = (
+            ("low", 0.25),
+            ("medium", 0.5),
+            ("full", 1.0),
+        )
         self._map_center = self._center()
         self._map_drag_start: Optional[tuple[float, float]] = None
         self._map_drag_origin: Optional[tuple[float, float]] = None
@@ -162,9 +194,9 @@ class CoordinateTab(ttk.Frame):
         self._right_linear_var = tk.StringVar(value="1")
         self._map_file_var = tk.StringVar(value="")
         self._map_image_scale_var = tk.DoubleVar(value=1.0)
-        self._map_image_scale_label_var = tk.StringVar(value="1.00x")
+        self._map_image_scale_text_var = tk.StringVar(value="1.00")
         self._map_rotation_var = tk.DoubleVar(value=0.0)
-        self._map_rotation_label_var = tk.StringVar(value="0.0 deg")
+        self._map_rotation_text_var = tk.StringVar(value="0.0")
         self._pose_source_var = tk.StringVar(value=POSE_SOURCE_LABELS[PoseSourceMode.INTERNAL])
         self._autopilot_var = tk.StringVar(value=AUTOPILOT_LABELS[AutopilotMode.BUILTIN_PURE_PURSUIT])
 
@@ -172,26 +204,30 @@ class CoordinateTab(ttk.Frame):
         self._state_notify_after_id: str | None = None
 
         self._build()
+        self.bind("<Destroy>", self._on_destroy, add="+")
+        self.after(40, self._poll_map_render_results)
         self._init_nodes()
         self._redraw()
 
     # ---------------- UI ----------------
 
     def _build(self) -> None:
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=0)
+        self.columnconfigure(0, weight=1 if self._dynamic_route_views else 0)
+        self.columnconfigure(1, weight=0 if self._dynamic_route_views else 1)
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=0)
 
         left = ttk.Frame(self)
-        left.grid(row=0, column=0, sticky="nsew")
-        left.columnconfigure(0, weight=1)
-        left.rowconfigure(0, weight=1)
+        left.grid(row=0, column=0, sticky="nsew" if self._dynamic_route_views else "nw")
+        if self._dynamic_route_views:
+            left.columnconfigure(0, weight=1)
+            left.rowconfigure(0, weight=1)
 
         route_views = ttk.Frame(left)
-        route_views.grid(row=0, column=0, sticky="nsew")
-        route_views.columnconfigure(0, weight=1)
-        route_views.rowconfigure(0, weight=1)
+        route_views.grid(row=0, column=0, sticky="nsew" if self._dynamic_route_views else "nw")
+        if self._dynamic_route_views:
+            route_views.columnconfigure(0, weight=1)
+            route_views.rowconfigure(0, weight=1)
 
         self.canvas = tk.Canvas(
             route_views,
@@ -201,26 +237,29 @@ class CoordinateTab(ttk.Frame):
             highlightthickness=1,
             highlightbackground="#606060",
         )
-        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.canvas.grid(row=0, column=0, sticky="nsew" if self._dynamic_route_views else "nw")
 
-        magnifier_row = ttk.Frame(route_views)
-        magnifier_row.grid(row=1, column=0, sticky="w", pady=(8, 0))
-        self.magnifier_canvas = tk.Canvas(
-            magnifier_row,
-            width=self._canvas_size // 2,
-            height=self._canvas_size // 2,
-            bg=PANEL_BG,
-            highlightthickness=1,
-            highlightbackground="#606060",
-        )
-        self.magnifier_canvas.grid(row=0, column=0, sticky="nw")
-
+        self.magnifier_canvas: Optional[tk.Canvas] = None
         self._view_canvas_zoom: dict[tk.Canvas, float] = {
             self.canvas: 1.0,
-            self.magnifier_canvas: self._magnifier_zoom,
         }
-        self._bind_route_canvas(self.canvas, self._on_main_canvas_configure)
-        self._bind_route_canvas(self.magnifier_canvas, self._on_magnifier_canvas_configure)
+        if self._dynamic_route_views:
+            magnifier_row = ttk.Frame(route_views)
+            magnifier_row.grid(row=1, column=0, sticky="w", pady=(8, 0))
+            self.magnifier_canvas = tk.Canvas(
+                magnifier_row,
+                width=self._canvas_size // 2,
+                height=self._canvas_size // 2,
+                bg=PANEL_BG,
+                highlightthickness=1,
+                highlightbackground="#606060",
+            )
+            self.magnifier_canvas.grid(row=0, column=0, sticky="nw")
+            self._view_canvas_zoom[self.magnifier_canvas] = self._magnifier_zoom
+            self._bind_route_canvas(self.canvas, self._on_main_canvas_configure)
+            self._bind_route_canvas(self.magnifier_canvas, self._on_magnifier_canvas_configure)
+        else:
+            self._bind_route_canvas(self.canvas)
 
         scale_row = ttk.Frame(left)
         scale_row.grid(row=1, column=0, sticky="w", pady=(6, 0))
@@ -258,8 +297,13 @@ class CoordinateTab(ttk.Frame):
             command=self._on_map_scale_change,
         )
         self.map_scale_slider.pack(side="left", padx=(8, 6))
-        ttk.Label(map_scale_row, textvariable=self._map_image_scale_label_var, width=6).pack(side="left")
+        self.map_scale_entry = ttk.Entry(map_scale_row, textvariable=self._map_image_scale_text_var, width=7)
+        self.map_scale_entry.pack(side="left")
+        self.map_scale_entry.bind("<Return>", self._commit_map_scale_text)
+        self.map_scale_entry.bind("<FocusOut>", self._commit_map_scale_text)
+        ttk.Label(map_scale_row, text="x").pack(side="left", padx=(4, 0))
         self.map_scale_slider.state(["disabled"])
+        self.map_scale_entry.state(["disabled"])
 
         map_rot_row = ttk.Frame(left)
         map_rot_row.grid(row=3, column=0, sticky="w", pady=(4, 0))
@@ -274,8 +318,13 @@ class CoordinateTab(ttk.Frame):
             command=self._on_map_rotation_change,
         )
         self.map_rot_slider.pack(side="left", padx=(8, 6))
-        ttk.Label(map_rot_row, textvariable=self._map_rotation_label_var, width=6).pack(side="left")
+        self.map_rot_entry = ttk.Entry(map_rot_row, textvariable=self._map_rotation_text_var, width=7)
+        self.map_rot_entry.pack(side="left")
+        self.map_rot_entry.bind("<Return>", self._commit_map_rotation_text)
+        self.map_rot_entry.bind("<FocusOut>", self._commit_map_rotation_text)
+        ttk.Label(map_rot_row, text="deg").pack(side="left", padx=(4, 0))
         self.map_rot_slider.state(["disabled"])
+        self.map_rot_entry.state(["disabled"])
 
         right = ttk.Frame(self)
         right.grid(row=0, column=1, sticky="nw", padx=(12, 0))
@@ -462,6 +511,8 @@ class CoordinateTab(ttk.Frame):
             canvas.bind("<Configure>", on_configure)
 
     def _route_canvases(self) -> tuple[tk.Canvas, ...]:
+        if self.magnifier_canvas is None:
+            return (self.canvas,)
         return (self.canvas, self.magnifier_canvas)
 
     def _resolve_canvas(self, canvas: Optional[tk.Canvas]) -> tk.Canvas:
@@ -491,6 +542,34 @@ class CoordinateTab(ttk.Frame):
     def _canvas_screen_center(self, canvas: Optional[tk.Canvas] = None) -> tuple[float, float]:
         width, height = self._canvas_dimensions(canvas)
         return (width * 0.5, height * 0.5)
+
+    def _canvas_key(self, canvas: tk.Canvas) -> str:
+        return "main" if canvas is self.canvas else "magnifier"
+
+    def _canvas_for_key(self, canvas_key: str) -> Optional[tk.Canvas]:
+        if canvas_key == "main":
+            return self.canvas
+        if canvas_key == "magnifier":
+            return self.magnifier_canvas
+        return None
+
+    def _map_angle_key(self) -> int:
+        return int(round((self._map_rotation_deg() % 360.0) * 10.0))
+
+    def _map_render_spec(self, canvas: tk.Canvas) -> Optional[_MapRenderSpec]:
+        model_size = self._map_model_size()
+        if model_size is None:
+            return None
+        draw_scale = self._canvas_display_scale(canvas)
+        draw_w = max(1, int(round(model_size[0] * draw_scale)))
+        draw_h = max(1, int(round(model_size[1] * draw_scale)))
+        return _MapRenderSpec(
+            canvas_key=self._canvas_key(canvas),
+            draw_w=draw_w,
+            draw_h=draw_h,
+            angle_deg=self._map_rotation_deg(),
+            angle_key=self._map_angle_key(),
+        )
 
     def _to_view(self, pt: tuple[float, float], canvas: Optional[tk.Canvas] = None) -> tuple[float, float]:
         model_cx, model_cy = self._center()
@@ -551,6 +630,184 @@ class CoordinateTab(ttk.Frame):
         except Exception:
             value = 0.0
         return max(0.0, min(360.0, value))
+
+    def _sync_map_scale_text(self) -> None:
+        self._map_image_scale_text_var.set(f"{self._map_scale_factor():.2f}")
+
+    def _sync_map_rotation_text(self) -> None:
+        self._map_rotation_text_var.set(f"{self._map_rotation_deg():.1f}")
+
+    def _clear_map_render_schedule(self) -> None:
+        if self._map_render_after_id is None:
+            return
+        try:
+            self.after_cancel(self._map_render_after_id)
+        except Exception:
+            pass
+        self._map_render_after_id = None
+
+    def _invalidate_map_render(self, *, preview: bool) -> None:
+        self._map_render_generation += 1
+        self._map_render_preview = preview
+        self._map_image_cache.clear()
+        self._clear_map_render_schedule()
+        with self._map_render_lock:
+            self._map_render_request = None
+
+    def _schedule_map_render(
+        self,
+        *,
+        preview: bool,
+        delay_ms: int,
+        redraw: bool,
+        notify_state: bool,
+    ) -> None:
+        if self._map_image is None or Image is None or ImageTk is None:
+            return
+        self._invalidate_map_render(preview=preview)
+        if delay_ms <= 0:
+            self._dispatch_map_render_request()
+        else:
+            self._map_render_after_id = self.after(delay_ms, self._dispatch_map_render_request)
+        if redraw:
+            self._redraw(recompute_profile=False, notify_state=notify_state)
+
+    def _dispatch_map_render_request(self) -> None:
+        self._map_render_after_id = None
+        if self._map_image is None or Image is None or ImageTk is None:
+            return
+        specs = tuple(
+            spec
+            for spec in (self._map_render_spec(canvas) for canvas in self._route_canvases())
+            if spec is not None
+        )
+        if not specs:
+            return
+        generation = self._map_render_generation
+        self._map_render_preview = False
+        self._ensure_map_render_worker()
+        with self._map_render_lock:
+            self._map_render_request = (generation, self._map_image, specs)
+        self._map_render_wake.set()
+
+    def _ensure_map_render_worker(self) -> None:
+        if self._map_render_thread is not None and self._map_render_thread.is_alive():
+            return
+        self._map_render_stop.clear()
+        self._map_render_thread = threading.Thread(
+            target=self._map_render_worker_loop,
+            name="coord-map-render",
+            daemon=True,
+        )
+        self._map_render_thread.start()
+
+    def _map_render_worker_loop(self) -> None:
+        while not self._map_render_stop.is_set():
+            self._map_render_wake.wait()
+            self._map_render_wake.clear()
+            if self._map_render_stop.is_set():
+                return
+            with self._map_render_lock:
+                request = self._map_render_request
+            if request is None:
+                continue
+            generation, source_image, specs = request
+            for stage_name, stage_scale in self._map_render_stage_order:
+                for spec in specs:
+                    if self._map_render_is_stale(generation) or self._map_render_stop.is_set():
+                        break
+                    rendered = self._render_map_stage(source_image, spec, stage_scale)
+                    if rendered is None:
+                        continue
+                    if self._map_render_is_stale(generation) or self._map_render_stop.is_set():
+                        break
+                    self._map_render_results.put((generation, spec, stage_name, rendered))
+                else:
+                    continue
+                break
+
+    def _map_render_is_stale(self, generation: int) -> bool:
+        return generation != self._map_render_generation
+
+    def _render_map_stage(self, source_image: Any, spec: _MapRenderSpec, stage_scale: float) -> Any:
+        if Image is None:
+            return None
+        draw_w = max(1, int(spec.draw_w))
+        draw_h = max(1, int(spec.draw_h))
+        work_w = max(1, int(round(draw_w * stage_scale)))
+        work_h = max(1, int(round(draw_h * stage_scale)))
+        angle_deg = float(spec.angle_deg)
+        try:
+            resized = source_image.resize((work_w, work_h), Image.Resampling.BILINEAR)
+            if spec.angle_key != 0:
+                rotated = resized.rotate(-angle_deg, resample=Image.Resampling.BILINEAR, expand=True)
+            else:
+                rotated = resized
+            if stage_scale >= 0.999:
+                return rotated
+            angle_rad = math.radians(angle_deg)
+            cos_a = abs(math.cos(angle_rad))
+            sin_a = abs(math.sin(angle_rad))
+            final_w = max(1, int(round(draw_w * cos_a + draw_h * sin_a)))
+            final_h = max(1, int(round(draw_w * sin_a + draw_h * cos_a)))
+            return rotated.resize((final_w, final_h), Image.Resampling.BILINEAR)
+        except Exception:
+            return None
+
+    def _poll_map_render_results(self) -> None:
+        if self._map_render_stop.is_set():
+            return
+        changed = False
+        while True:
+            try:
+                generation, spec, _stage_name, rendered = self._map_render_results.get_nowait()
+            except queue.Empty:
+                break
+            if generation != self._map_render_generation:
+                continue
+            if ImageTk is None:
+                continue
+            try:
+                photo = ImageTk.PhotoImage(rendered)
+            except Exception:
+                continue
+            self._map_image_cache[spec.cache_key] = photo
+            changed = True
+        if changed:
+            self._redraw(recompute_profile=False, notify_state=False)
+        if self.winfo_exists():
+            self.after(40, self._poll_map_render_results)
+
+    def _draw_map_placeholder(self, canvas: tk.Canvas, spec: _MapRenderSpec) -> None:
+        cx, cy = self._to_view(self._map_center, canvas)
+        half_w = spec.draw_w * 0.5
+        half_h = spec.draw_h * 0.5
+        angle_rad = math.radians(spec.angle_deg)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        pts: list[float] = []
+        for lx, ly in ((-half_w, -half_h), (half_w, -half_h), (half_w, half_h), (-half_w, half_h)):
+            dx = lx * cos_a - ly * sin_a
+            dy = lx * sin_a + ly * cos_a
+            pts.extend([cx + dx, cy + dy])
+        canvas.create_polygon(
+            pts,
+            outline="#6a6a6a",
+            fill="#d9d9d9",
+            width=2,
+            dash=(4, 3),
+            tags="map",
+        )
+        canvas.create_line(pts[0], pts[1], pts[4], pts[5], fill="#909090", dash=(3, 3), tags="map")
+        canvas.create_line(pts[2], pts[3], pts[6], pts[7], fill="#909090", dash=(3, 3), tags="map")
+        canvas.create_text(cx, cy, text="Map preview", fill="#505050", tags="map")
+
+    def _on_destroy(self, event: tk.Event) -> None:
+        if event.widget is not self:
+            return
+        self._clear_map_render_schedule()
+        self._map_render_stop.set()
+        self._map_render_wake.set()
 
     def _map_model_size(self) -> Optional[tuple[float, float]]:
         if self._map_image is None:
@@ -614,6 +871,8 @@ class CoordinateTab(ttk.Frame):
         )
 
     def _sync_magnifier_size(self, width: float, height: float) -> None:
+        if self.magnifier_canvas is None:
+            return
         desired_w, desired_h = self._desired_magnifier_size(width, height)
         current_w = int(float(self.magnifier_canvas.cget("width")))
         current_h = int(float(self.magnifier_canvas.cget("height")))
@@ -622,15 +881,19 @@ class CoordinateTab(ttk.Frame):
         self.magnifier_canvas.configure(width=desired_w, height=desired_h)
 
     def _on_main_canvas_configure(self, event: tk.Event) -> None:
-        if not hasattr(self, "rpm_canvas") or not hasattr(self, "nodes"):
+        if self.magnifier_canvas is None or not hasattr(self, "rpm_canvas") or not hasattr(self, "nodes"):
             return
         self._sync_magnifier_size(float(event.width), float(event.height))
         self._redraw(recompute_profile=False, notify_state=False)
+        if self._map_image is not None:
+            self._schedule_map_render(preview=True, delay_ms=self._map_render_idle_ms, redraw=False, notify_state=False)
 
     def _on_magnifier_canvas_configure(self, _event: tk.Event) -> None:
-        if not hasattr(self, "rpm_canvas") or not hasattr(self, "nodes"):
+        if self.magnifier_canvas is None or not hasattr(self, "rpm_canvas") or not hasattr(self, "nodes"):
             return
         self._redraw(recompute_profile=False, notify_state=False)
+        if self._map_image is not None:
+            self._schedule_map_render(preview=True, delay_ms=self._map_render_idle_ms, redraw=False, notify_state=False)
 
     def set_geometry(self, a1_cm: float, a2_cm: float, drive_wheel_diameter_cm: float) -> None:
         self._a1_cm = max(a1_cm, 0.0)
@@ -760,14 +1023,22 @@ class CoordinateTab(ttk.Frame):
         if not map_loaded:
             self._map_path = ""
             self._map_image = None
+            self._invalidate_map_render(preview=False)
             self._map_image_cache.clear()
             self._map_file_var.set("")
             self.map_scale_slider.state(["disabled"])
+            self.map_scale_entry.state(["disabled"])
             self.map_rot_slider.state(["disabled"])
-        self._map_image_scale_label_var.set(f"{self._map_scale_factor():.2f}x")
-        self._map_rotation_label_var.set(f"{self._map_rotation_deg():.1f} deg")
+            self.map_rot_entry.state(["disabled"])
+        else:
+            self.map_scale_entry.state(["!disabled"])
+            self.map_rot_entry.state(["!disabled"])
+        self._sync_map_scale_text()
+        self._sync_map_rotation_text()
         self._suspend_state_notify = False
         self._redraw()
+        if map_loaded:
+            self._schedule_map_render(preview=False, delay_ms=0, redraw=False, notify_state=False)
 
     def set_running(self, running: bool) -> None:
         self._editable = not running
@@ -1066,29 +1337,13 @@ class CoordinateTab(ttk.Frame):
     def _draw_map(self, canvas: tk.Canvas) -> None:
         if self._map_image is None:
             return
-        model_size = self._map_model_size()
-        if model_size is None:
+        spec = self._map_render_spec(canvas)
+        if spec is None:
             return
-        model_w, model_h = model_size
-        if model_w <= 0.0 or model_h <= 0.0:
-            return
-        draw_scale = self._canvas_display_scale(canvas)
-        draw_w = max(1, int(round(model_w * draw_scale)))
-        draw_h = max(1, int(round(model_h * draw_scale)))
-        angle_deg = self._map_rotation_deg()
-        angle_key = int(round((angle_deg % 360.0) * 10.0))
-        cache_key = (draw_w, draw_h, angle_key)
-        image = self._map_image_cache.get(cache_key)
+        image = None if self._map_render_preview else self._map_image_cache.get(spec.cache_key)
         if image is None:
-            resized = self._map_image.resize((draw_w, draw_h), Image.Resampling.LANCZOS)
-            if angle_key != 0:
-                rotated = resized.rotate(-angle_deg, resample=Image.Resampling.BICUBIC, expand=True)
-            else:
-                rotated = resized
-            if len(self._map_image_cache) >= 12:
-                self._map_image_cache.clear()
-            image = ImageTk.PhotoImage(rotated)
-            self._map_image_cache[cache_key] = image
+            self._draw_map_placeholder(canvas, spec)
+            return
         vx, vy = self._to_view(self._map_center, canvas)
         canvas.create_image(vx, vy, image=image, anchor="center", tags="map")
 
@@ -1447,23 +1702,65 @@ class CoordinateTab(ttk.Frame):
         if not self._load_map_image(path, recenter=True, show_errors=True, redraw=False):
             return
         self._map_image_scale_var.set(1.0)
-        self._map_image_scale_label_var.set("1.00x")
         self._map_rotation_var.set(0.0)
-        self._map_rotation_label_var.set("0.0 deg")
-        self._map_image_cache.clear()
+        self._sync_map_scale_text()
+        self._sync_map_rotation_text()
         self._redraw()
+        self._schedule_map_render(preview=False, delay_ms=0, redraw=False, notify_state=False)
 
     def _on_map_scale_change(self, _value: str | None = None) -> None:
-        self._map_image_scale_label_var.set(f"{self._map_scale_factor():.2f}x")
-        self._map_image_cache.clear()
+        self._sync_map_scale_text()
         if self._map_image is not None:
-            self._redraw(recompute_profile=False, notify_state=True)
+            self._schedule_map_render(
+                preview=True,
+                delay_ms=self._map_render_idle_ms,
+                redraw=True,
+                notify_state=True,
+            )
 
     def _on_map_rotation_change(self, _value: str | None = None) -> None:
-        self._map_rotation_label_var.set(f"{self._map_rotation_deg():.1f} deg")
-        self._map_image_cache.clear()
+        self._sync_map_rotation_text()
         if self._map_image is not None:
-            self._redraw(recompute_profile=False, notify_state=True)
+            self._schedule_map_render(
+                preview=True,
+                delay_ms=self._map_render_idle_ms,
+                redraw=True,
+                notify_state=True,
+            )
+
+    def _commit_map_scale_text(self, _event: tk.Event | None = None) -> str | None:
+        try:
+            value = float(self._map_image_scale_text_var.get().strip())
+        except ValueError:
+            self._sync_map_scale_text()
+            return "break"
+        self._map_image_scale_var.set(max(0.1, min(6.0, value)))
+        self._sync_map_scale_text()
+        if self._map_image is not None:
+            self._schedule_map_render(
+                preview=True,
+                delay_ms=self._map_render_idle_ms,
+                redraw=True,
+                notify_state=True,
+            )
+        return "break"
+
+    def _commit_map_rotation_text(self, _event: tk.Event | None = None) -> str | None:
+        try:
+            value = float(self._map_rotation_text_var.get().strip())
+        except ValueError:
+            self._sync_map_rotation_text()
+            return "break"
+        self._map_rotation_var.set(max(0.0, min(360.0, value)))
+        self._sync_map_rotation_text()
+        if self._map_image is not None:
+            self._schedule_map_render(
+                preview=True,
+                delay_ms=self._map_render_idle_ms,
+                redraw=True,
+                notify_state=True,
+            )
+        return "break"
 
     def _load_map_image(
         self,
@@ -1486,12 +1783,14 @@ class CoordinateTab(ttk.Frame):
             return False
         self._map_path = path
         self._map_image = loaded
-        self._map_image_cache.clear()
+        self._invalidate_map_render(preview=False)
         self._map_file_var.set(os.path.basename(path))
         if recenter:
             self._map_center = self._center()
         self.map_scale_slider.state(["!disabled"])
+        self.map_scale_entry.state(["!disabled"])
         self.map_rot_slider.state(["!disabled"])
+        self.map_rot_entry.state(["!disabled"])
         if redraw:
             self._redraw()
         return True
