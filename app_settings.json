@@ -26,7 +26,7 @@
   },
   "joystick": {
     "left_shift": 0.0,
-    "right_shift": -23.0,
+    "right_shift": 0.0,
     "left_linear": 1.0,
     "right_linear": 1.0
   },
@@ -109,10 +109,10 @@
     "right_linear": "1",
     "pose_source": "trolley",
     "autopilot_mode": "builtin_pure_pursuit",
-    "view_scale": 1.3454999898651276,
+    "view_scale": 0.6904542428786239,
     "view_pan": [
-      -90.34725972601652,
-      310.11952629714125
+      -167.1783321432304,
+      170.67940461049875
     ]
   }
 }

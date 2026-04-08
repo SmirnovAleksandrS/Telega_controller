@@ -3,9 +3,11 @@ Dialogs: COM settings, Deviation settings.
 """
 
 from __future__ import annotations
+import json
 import math
+import os
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from dataclasses import dataclass
 
 from comm.serial_worker import SerialWorker
@@ -262,3 +264,199 @@ class SpeedMapDialog(tk.Toplevel):
     def _cancel(self) -> None:
         self.result = None
         self.destroy()
+
+
+class DatasetSelectionDialog(tk.Toplevel):
+    def __init__(
+        self,
+        master: tk.Widget,
+        *,
+        title: str,
+        prompt: str,
+        items: list[str],
+        preselected: list[int] | None = None,
+    ) -> None:
+        super().__init__(master)
+        self.title(title)
+        self.resizable(False, False)
+        self.result: list[int] | None = None
+        self._items = list(items)
+
+        frm = ttk.Frame(self, padding=10)
+        frm.grid(row=0, column=0, sticky="nsew")
+        frm.columnconfigure(0, weight=1)
+        frm.rowconfigure(1, weight=1)
+
+        ttk.Label(frm, text=prompt).grid(row=0, column=0, sticky="w")
+
+        list_host = ttk.Frame(frm)
+        list_host.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        list_host.columnconfigure(0, weight=1)
+        list_host.rowconfigure(0, weight=1)
+
+        self.listbox = tk.Listbox(list_host, selectmode="extended", height=min(8, max(4, len(items))))
+        self.listbox.grid(row=0, column=0, sticky="nsew")
+        for item in items:
+            self.listbox.insert("end", item)
+        if preselected:
+            for index in preselected:
+                if 0 <= index < len(items):
+                    self.listbox.selection_set(index)
+
+        yscroll = ttk.Scrollbar(list_host, orient="vertical", command=self.listbox.yview)
+        yscroll.grid(row=0, column=1, sticky="ns")
+        self.listbox.configure(yscrollcommand=yscroll.set)
+
+        btns = ttk.Frame(frm)
+        btns.grid(row=2, column=0, sticky="e", pady=(10, 0))
+        ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
+
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+    def _ok(self) -> None:
+        self.result = [int(index) for index in self.listbox.curselection()]
+        self.destroy()
+
+    def _cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+
+class AddPluginDialog(tk.Toplevel):
+    def __init__(self, master: tk.Widget) -> None:
+        super().__init__(master)
+        self.title("Add Source / Method")
+        self.resizable(False, False)
+        self.result: dict[str, str] | None = None
+
+        frm = ttk.Frame(self, padding=10)
+        frm.grid(row=0, column=0, sticky="nsew")
+        frm.columnconfigure(1, weight=1)
+
+        ttk.Label(frm, text="Kind").grid(row=0, column=0, sticky="w")
+        self.kind_var = tk.StringVar(value="Method plugin (.py)")
+        kind_cb = ttk.Combobox(frm, textvariable=self.kind_var, values=("Method plugin (.py)",), state="readonly", width=32)
+        kind_cb.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+
+        ttk.Label(frm, text="Python file").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        self.path_var = tk.StringVar()
+        ttk.Entry(frm, textvariable=self.path_var, width=42).grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+
+        browse_btn = ttk.Button(frm, text="Browse...", command=self._browse)
+        browse_btn.grid(row=1, column=2, sticky="w", padx=(8, 0), pady=(8, 0))
+
+        hint = ttk.Label(
+            frm,
+            text="Source plugins can be added later. This phase loads method plugins only.",
+            foreground="#444444",
+        )
+        hint.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+        btns = ttk.Frame(frm)
+        btns.grid(row=3, column=0, columnspan=3, sticky="e", pady=(10, 0))
+        ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="Add", command=self._ok).grid(row=0, column=1)
+
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+    def _browse(self) -> None:
+        default_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "externModules", "magnetometer"))
+        path = filedialog.askopenfilename(
+            title="Select Python plugin",
+            initialdir=default_dir if os.path.isdir(default_dir) else None,
+            filetypes=[("Python files", "*.py"), ("All files", "*.*")],
+        )
+        if path:
+            self.path_var.set(path)
+
+    def _ok(self) -> None:
+        path = self.path_var.get().strip()
+        if not path:
+            messagebox.showerror("Add Source / Method", "Select a Python file.")
+            return
+        self.result = {"kind": "method", "path": path}
+        self.destroy()
+
+    def _cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+
+class MethodInfoDialog(tk.Toplevel):
+    def __init__(self, master: tk.Widget, *, title: str, info_text: str) -> None:
+        super().__init__(master)
+        self.title(title)
+        self.geometry("720x520")
+
+        frm = ttk.Frame(self, padding=10)
+        frm.pack(fill="both", expand=True)
+
+        text = tk.Text(frm, wrap="word")
+        text.pack(side="left", fill="both", expand=True)
+        text.insert("1.0", info_text)
+        text.configure(state="disabled")
+
+        yscroll = ttk.Scrollbar(frm, orient="vertical", command=text.yview)
+        yscroll.pack(side="right", fill="y")
+        text.configure(yscrollcommand=yscroll.set)
+
+        self.grab_set()
+
+
+class MethodDiagnosticsDialog(tk.Toplevel):
+    def __init__(self, master: tk.Widget, *, title: str, diagnostics: dict[str, object]) -> None:
+        super().__init__(master)
+        self.title(title)
+        self.geometry("820x620")
+
+        frm = ttk.Frame(self, padding=10)
+        frm.pack(fill="both", expand=True)
+
+        sections = [
+            f"Method: {diagnostics.get('name', '-')}",
+            f"Version: {diagnostics.get('version', '-')}",
+            f"File path: {diagnostics.get('file_path', '-')}",
+            f"Last action: {diagnostics.get('last_action', '-')}",
+            "",
+            "Error:",
+            str(diagnostics.get("error_text", "-")),
+            "",
+            "Warnings:",
+            "\n".join(diagnostics.get("warnings", []) or ["-"]),
+            "",
+            "Traceback:",
+            str(diagnostics.get("traceback_text", "-")),
+        ]
+
+        text = tk.Text(frm, wrap="word")
+        text.pack(side="left", fill="both", expand=True)
+        text.insert("1.0", "\n".join(sections))
+        text.configure(state="disabled")
+
+        yscroll = ttk.Scrollbar(frm, orient="vertical", command=text.yview)
+        yscroll.pack(side="right", fill="y")
+        text.configure(yscrollcommand=yscroll.set)
+
+        self.grab_set()
+
+
+def format_method_info_text(info: dict[str, object], *, file_path: str) -> str:
+    capabilities = [
+        f"supports_calibrate={bool(info.get('supports_calibrate', False))}",
+        f"supports_load_params={bool(info.get('supports_load_params', False))}",
+        f"supports_save_params={bool(info.get('supports_save_params', False))}",
+        f"supports_process={bool(info.get('supports_process', False))}",
+    ]
+    payload = {
+        "name": info.get("name", "-"),
+        "version": info.get("version", "-"),
+        "type": info.get("type", "-"),
+        "file_path": file_path,
+        "capabilities": capabilities,
+        "input_schema": info.get("input_schema"),
+        "output_schema": info.get("output_schema"),
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)

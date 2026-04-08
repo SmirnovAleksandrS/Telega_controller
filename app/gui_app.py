@@ -8,25 +8,51 @@ Main GUI application:
 
 from __future__ import annotations
 import math
+import queue
+import threading
+import time
+import traceback
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from dataclasses import asdict
 import struct
-from typing import Optional, Any
+from typing import Optional, Any, Sequence
 import collections
 import json
 import os
+from datetime import datetime
 
 from app.manual_tab import ManualTab
+from app.magnetometer_dataset import Dataset, SampleRecord
+from app.magnetometer_metrics import MetricsReport, compute_metrics_report
+from app.magnetometer_plugin_loader import (
+    CalibrationRunResult,
+    LoadedMethodPlugin,
+    ParamIoResult,
+    ProcessRunResult,
+    PluginDiagnostics,
+    load_method_params,
+    load_method_plugin,
+    run_method_calibration,
+    run_method_process,
+    save_method_params,
+)
+from app.magnetometer_tab import compute_raw_heading_deg
 from app.coordinate_tab import CoordinateTab
+from app.sensors_tab import SensorsTab
 from app.dialogs import (
+    AddPluginDialog,
     ComSettingsDialog,
     DeviationSettingsDialog,
     DeviationConfig,
+    DatasetSelectionDialog,
     GeometrySettingsDialog,
     GeometryConfig,
+    MethodDiagnosticsDialog,
+    MethodInfoDialog,
     SpeedMapDialog,
     SpeedMapConfig,
+    format_method_info_text,
 )
 from app.styles import PANEL_BG, STATUS_GREEN, STATUS_RED, COLOR_GREEN, COLOR_YELLOW, COLOR_RED
 
@@ -102,6 +128,22 @@ class VirtualControllerApp:
         self._kill_tick_ms = 200
         self._coord_running = False
         self._coord_tick_ms = 10
+        self._mag_datasets: list[Dataset] = []
+        self._mag_dataset: Optional[Dataset] = None
+        self._mag_recording_active = False
+        self._mag_dataset_export_path: str = ""
+        self._mag_sources = self._default_magnetometer_sources()
+        self._mag_selected_source_id = "raw_magnetometer"
+        self._mag_methods: dict[str, LoadedMethodPlugin] = {}
+        self._mag_selected_method_id: str | None = None
+        self._mag_calibration_results: queue.Queue[tuple[str, CalibrationRunResult]] = queue.Queue()
+        self._mag_calibration_jobs: dict[str, dict[str, Any]] = {}
+        self._mag_latest_derived_streams: dict[str, dict[str, Any]] = {}
+        self._mag_primary_heading_stream_id = "raw_heading"
+        self._mag_last_live_snapshot: dict[str, Any] | None = None
+        self._mag_metrics_report: MetricsReport | None = None
+        self._mag_last_dataset_ui_refresh_s = 0.0
+        self._mag_dataset_ui_refresh_interval_s = 0.2
         self._set_manual_command_quantum_ms(self._manual_cfg["command_quantum_ms"], persist=False)
 
         # Radio quality (simple heuristic)
@@ -209,6 +251,41 @@ class VirtualControllerApp:
             dynamic_route_views=not self._fixed_route_canvases,
         )
         self.nb.add(self.coord_tab, text="Coordinate")
+        self.sensors_tab = SensorsTab(
+            self.nb,
+            on_start_record=self._on_magnetometer_start_record,
+            on_stop_record=self._on_magnetometer_stop_record,
+            on_load_csv=self._on_magnetometer_load_csv,
+            on_load_multiple=self._on_magnetometer_load_multiple,
+            on_save_current=self._on_magnetometer_save_current,
+            on_save_as=self._on_magnetometer_save_as,
+            on_concatenate=self._on_magnetometer_concatenate,
+            on_trim_selection=self._on_magnetometer_trim_selection,
+            on_delete_selection=self._on_magnetometer_delete_selection,
+            on_select_dataset=self._on_select_magnetometer_dataset,
+            on_select_source=self._on_select_magnetometer_source,
+            on_source_show_change=self._on_toggle_magnetometer_source_show,
+            on_source_record_change=self._on_toggle_magnetometer_source_record,
+            on_add_plugin=self._on_magnetometer_add_plugin,
+            on_select_method=self._on_select_magnetometer_method,
+            on_open_method_info=self._on_open_magnetometer_method_info,
+            on_calibrate_method=self._on_calibrate_magnetometer_method,
+            on_load_method_params=self._on_load_magnetometer_method_params,
+            on_save_method_params=self._on_save_magnetometer_method_params,
+            on_method_show_change=self._on_toggle_magnetometer_method_show,
+            on_enable_method_realtime=self._on_enable_magnetometer_method_realtime,
+            on_disable_method_realtime=self._on_disable_magnetometer_method_realtime,
+            on_method_record_change=self._on_toggle_magnetometer_method_record,
+            on_select_primary_heading=self._on_select_magnetometer_primary_heading,
+            on_export_metrics=self._on_magnetometer_export_metrics_csv,
+        )
+        self.magnetometer_tab = self.sensors_tab.magnetometer_tab
+        self.nb.add(self.sensors_tab, text="Sensors")
+        self._refresh_magnetometer_sources_ui()
+        self._refresh_magnetometer_methods_ui()
+        self._refresh_magnetometer_dataset_ui()
+        self._refresh_magnetometer_heading_routing_ui()
+        self._refresh_magnetometer_metrics_ui()
         self._apply_geometry_settings()
         self._apply_speed_map_settings()
         if hasattr(self, "_coord_state"):
@@ -923,6 +1000,7 @@ class VirtualControllerApp:
         # periodic tasks
         self._send_control_if_due(now_ms)
         self._kick_sync_if_due(now_ms)
+        self._poll_magnetometer_calibration_jobs()
 
         # handle RX queue
         while True:
@@ -958,10 +1036,7 @@ class VirtualControllerApp:
                     msg = log_obj.get("msg")
                     if isinstance(msg, dict):
                         msg_type = msg.get("type")
-                    if self.manual_tab.should_show_log(msg_type):
-                        self.manual_tab.append_log_line(line)
-                    if self.coord_tab.should_show_log(msg_type):
-                        self.coord_tab.append_log_line(line)
+                    self._append_log_to_tabs(line, msg_type)
                     if self.logger.is_running:
                         self.logger.write_line(line)
                 except Exception:
@@ -984,6 +1059,7 @@ class VirtualControllerApp:
                     self._update_mcu_time_label()
                 if isinstance(parsed, ImuData):
                     self._last_imu = parsed
+                    self._update_magnetometer_live_view(parsed, ev.pc_rx_ms)
                 if isinstance(parsed, TachoData):
                     self._last_tacho = parsed
                     self._update_track_speed_labels(parsed.left_rpm, parsed.right_rpm)
@@ -997,6 +1073,7 @@ class VirtualControllerApp:
 
         self._update_mcu_time_label()
         self._update_uart_status()
+        self._poll_magnetometer_calibration_jobs()
         if not self._is_shutting_down:
             self.root.after(20, self._poll_rx)
 
@@ -1174,10 +1251,7 @@ class VirtualControllerApp:
             line = self.logger.format_line(log_obj)
             print(line, flush=True)
             msg_type = msg.get("type")
-            if self.manual_tab.should_show_log(msg_type):
-                self.manual_tab.append_log_line(line, tag="tx")
-            if self.coord_tab.should_show_log(msg_type):
-                self.coord_tab.append_log_line(line, tag="tx")
+            self._append_log_to_tabs(line, msg_type, tag="tx")
             if self.logger.is_running:
                 self.logger.write_line(line)
         except Exception:
@@ -1218,6 +1292,1213 @@ class VirtualControllerApp:
         ok = sum(1 for x in self._rx_ok if x)
         q = int(round(10.0 * ok / len(self._rx_ok)))
         return max(0, min(10, q))
+
+    def _iter_log_tabs(self) -> tuple[Any, ...]:
+        tabs: list[Any] = []
+        for attr_name in ("manual_tab", "coord_tab", "magnetometer_tab"):
+            tab = getattr(self, attr_name, None)
+            if tab is not None:
+                tabs.append(tab)
+        return tuple(tabs)
+
+    def _append_log_to_tabs(self, line: str, msg_type: str | None, tag: str | None = None) -> None:
+        for tab in self._iter_log_tabs():
+            if tab.should_show_log(msg_type):
+                tab.append_log_line(line, tag=tag)
+
+    def _estimate_pc_event_ms_from_mcu(self, timestamp_mcu_ms: int) -> Optional[int]:
+        if not self.time_model.have_lock:
+            return None
+        return int(round(self.time_model.pc_from_mcu(timestamp_mcu_ms)))
+
+    def _update_magnetometer_live_view(self, imu: ImuData, pc_rx_ms: int) -> None:
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None:
+            return
+        timestamp_pc_est = self._estimate_pc_event_ms_from_mcu(imu.ts_ms)
+        mx = float(imu.magn[0])
+        my = float(imu.magn[1])
+        mz = float(imu.magn[2])
+        raw_heading = compute_raw_heading_deg(mx, my)
+        raw_sample = self._build_magnetometer_process_sample(
+            timestamp_mcu=imu.ts_ms,
+            timestamp_pc_rx=pc_rx_ms,
+            timestamp_pc_est=timestamp_pc_est,
+            mx=mx,
+            my=my,
+            mz=mz,
+            heading=raw_heading,
+        )
+        derived_streams, derived_records = self._process_magnetometer_methods_realtime(raw_sample)
+        self._record_magnetometer_sample(
+            timestamp_mcu=imu.ts_ms,
+            timestamp_pc_rx=pc_rx_ms,
+            timestamp_pc_est=timestamp_pc_est,
+            mx=mx,
+            my=my,
+            mz=mz,
+            derived_records=derived_records,
+        )
+        self._mag_last_live_snapshot = {
+            "timestamp_mcu": imu.ts_ms,
+            "timestamp_pc_rx": pc_rx_ms,
+            "timestamp_pc_est": timestamp_pc_est,
+            "mx": mx,
+            "my": my,
+            "mz": mz,
+            "raw_heading": raw_heading,
+            "derived_streams": dict(derived_streams),
+        }
+        self._refresh_magnetometer_heading_routing_ui()
+        selected_heading, selected_source_label = self._resolve_magnetometer_selected_output(raw_heading, derived_streams)
+        magnetometer_tab.update_live_imu(
+            timestamp_mcu=imu.ts_ms,
+            timestamp_pc_rx=pc_rx_ms,
+            timestamp_pc_est=timestamp_pc_est,
+            mx=mx,
+            my=my,
+            mz=mz,
+            selected_output_heading=selected_heading,
+            selected_source_label=selected_source_label,
+            derived_streams=derived_streams,
+        )
+
+    def _build_magnetometer_process_sample(
+        self,
+        *,
+        timestamp_mcu: int,
+        timestamp_pc_rx: int,
+        timestamp_pc_est: int | None,
+        mx: float,
+        my: float,
+        mz: float,
+        heading: float | None,
+    ) -> dict[str, Any]:
+        return {
+            "stream_id": "raw_magnetometer",
+            "stream_type": "raw",
+            "producer_name": "Raw Magnetometer",
+            "producer_version": "builtin",
+            "timestamp_mcu": timestamp_mcu,
+            "timestamp_pc_rx": timestamp_pc_rx,
+            "timestamp_pc_est": timestamp_pc_est,
+            "mag_x": mx,
+            "mag_y": my,
+            "mag_z": mz,
+            "heading": heading,
+            "flags": "",
+        }
+
+    def _normalize_magnetometer_process_output(
+        self,
+        plugin: LoadedMethodPlugin,
+        output: dict[str, Any],
+    ) -> tuple[dict[str, Any] | None, PluginDiagnostics | None]:
+        required = ("mag_x", "mag_y", "mag_z")
+        missing = [key for key in required if key not in output]
+        if missing:
+            return (
+                None,
+                self._make_magnetometer_method_diagnostics(
+                    plugin,
+                    last_action="validate_process_output",
+                    error_text=f"process() output missing required keys: {', '.join(missing)}",
+                ),
+            )
+
+        try:
+            mx = float(output["mag_x"])
+            my = float(output["mag_y"])
+            mz = float(output["mag_z"])
+        except (TypeError, ValueError) as exc:
+            return (
+                None,
+                self._make_magnetometer_method_diagnostics(
+                    plugin,
+                    last_action="validate_process_output",
+                    error_text=f"process() output contains non-numeric magnetometer values: {exc}",
+                ),
+            )
+
+        if not all(math.isfinite(value) for value in (mx, my, mz)):
+            return (
+                None,
+                self._make_magnetometer_method_diagnostics(
+                    plugin,
+                    last_action="validate_process_output",
+                    error_text="process() output contains non-finite magnetometer values.",
+                ),
+            )
+
+        heading_raw = output.get("heading")
+        heading: float | None
+        if heading_raw is None or heading_raw == "":
+            heading = compute_raw_heading_deg(mx, my)
+        else:
+            try:
+                heading = float(heading_raw)
+            except (TypeError, ValueError) as exc:
+                return (
+                    None,
+                    self._make_magnetometer_method_diagnostics(
+                        plugin,
+                        last_action="validate_process_output",
+                        error_text=f"process() output heading is invalid: {exc}",
+                    ),
+                )
+            if not math.isfinite(heading):
+                return (
+                    None,
+                    self._make_magnetometer_method_diagnostics(
+                        plugin,
+                        last_action="validate_process_output",
+                        error_text="process() output heading must be finite or null.",
+                    ),
+                )
+
+        normalized = dict(output)
+        normalized["mag_x"] = mx
+        normalized["mag_y"] = my
+        normalized["mag_z"] = mz
+        normalized["heading"] = heading
+        return (normalized, None)
+
+    def _build_magnetometer_derived_record(
+        self,
+        plugin: LoadedMethodPlugin,
+        output: dict[str, Any],
+    ) -> SampleRecord:
+        return SampleRecord(
+            stream_id=plugin.derived_stream_id or f"derived_{plugin.method_id}",
+            stream_type="derived",
+            producer_name=plugin.name,
+            producer_version=plugin.version,
+            timestamp_mcu=int(output["timestamp_mcu"]),
+            timestamp_pc_rx=int(output["timestamp_pc_rx"]),
+            timestamp_pc_est=output.get("timestamp_pc_est"),
+            mag_x=float(output["mag_x"]),
+            mag_y=float(output["mag_y"]),
+            mag_z=float(output["mag_z"]),
+            heading=output.get("heading"),
+            flags=str(output.get("flags", "realtime_derived")),
+        )
+
+    def _apply_magnetometer_process_error(
+        self,
+        method_id: str,
+        plugin: LoadedMethodPlugin,
+        result: ProcessRunResult,
+    ) -> None:
+        plugin.status = "error"
+        plugin.process_warnings = list(result.warnings)
+        plugin.realtime_enabled = False
+        plugin.record_enabled = False
+        plugin.last_output = None
+        self._mag_latest_derived_streams.pop(method_id, None)
+        if result.diagnostics is not None:
+            plugin.diagnostics = result.diagnostics
+        else:
+            plugin.diagnostics = self._make_magnetometer_method_diagnostics(
+                plugin,
+                last_action="process",
+                error_text="Realtime processing failed.",
+                warnings=result.warnings,
+            )
+        self._refresh_magnetometer_methods_ui()
+        self._open_magnetometer_method_diagnostics(method_id)
+
+    def _process_magnetometer_methods_realtime(
+        self,
+        raw_sample: dict[str, Any],
+    ) -> tuple[dict[str, dict[str, Any]], list[SampleRecord]]:
+        self._ensure_magnetometer_method_state()
+        derived_streams: dict[str, dict[str, Any]] = {}
+        derived_records: list[SampleRecord] = []
+
+        for method_id, plugin in self._mag_methods.items():
+            if not plugin.realtime_enabled:
+                plugin.last_output = None
+                self._mag_latest_derived_streams.pop(method_id, None)
+                continue
+
+            result = run_method_process(plugin, raw_sample)
+            if not result.ok:
+                self._apply_magnetometer_process_error(method_id, plugin, result)
+                continue
+
+            assert result.output is not None
+            merged_output = dict(raw_sample)
+            merged_output.update(result.output)
+            normalized, diagnostics = self._normalize_magnetometer_process_output(plugin, merged_output)
+            if diagnostics is not None or normalized is None:
+                self._apply_magnetometer_process_error(
+                    method_id,
+                    plugin,
+                    ProcessRunResult(ok=False, warnings=result.warnings, diagnostics=diagnostics),
+                )
+                continue
+
+            plugin.status = plugin.load_status
+            plugin.diagnostics = None
+            plugin.process_warnings = list(result.warnings)
+            plugin.last_output = dict(normalized)
+
+            stream_state = {
+                "title": plugin.name,
+                "stream_id": plugin.derived_stream_id or f"derived_{plugin.method_id}",
+                "mx": normalized["mag_x"],
+                "my": normalized["mag_y"],
+                "mz": normalized["mag_z"],
+                "heading": normalized.get("heading"),
+                "show": plugin.show_enabled,
+            }
+            derived_streams[method_id] = stream_state
+            self._mag_latest_derived_streams[method_id] = dict(stream_state)
+
+            if plugin.record_enabled:
+                derived_records.append(self._build_magnetometer_derived_record(plugin, normalized))
+
+        return (derived_streams, derived_records)
+
+    def _resolve_magnetometer_selected_output(
+        self,
+        raw_heading: float | None,
+        derived_streams: dict[str, dict[str, Any]],
+    ) -> tuple[float | None, str]:
+        self._ensure_magnetometer_method_state()
+        primary_stream_id = self._mag_primary_heading_stream_id
+        if primary_stream_id == "raw_heading":
+            return (raw_heading, "Raw Heading")
+
+        plugin = self._mag_methods.get(primary_stream_id)
+        if plugin is None:
+            return (raw_heading, "Raw Heading")
+
+        selected = derived_streams.get(primary_stream_id)
+        if selected is None:
+            selected = self._mag_latest_derived_streams.get(primary_stream_id)
+        if selected is None:
+            return (None, plugin.name)
+        return (selected.get("heading"), plugin.name)
+
+    def _make_magnetometer_dataset_name(self) -> str:
+        return f"mag_record_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    def _make_concatenated_magnetometer_dataset_name(self) -> str:
+        return f"mag_concat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    def _default_magnetometer_sources(self) -> dict[str, dict[str, object]]:
+        return {
+            "raw_magnetometer": {
+                "title": "Raw Magnetometer",
+                "show": True,
+                "record": True,
+            },
+            "raw_heading": {
+                "title": "Raw Heading",
+                "show": True,
+                "record": False,
+            },
+        }
+
+    def _ensure_magnetometer_source_state(self) -> None:
+        if not hasattr(self, "_mag_sources"):
+            self._mag_sources = self._default_magnetometer_sources()
+        if not hasattr(self, "_mag_selected_source_id") or self._mag_selected_source_id not in self._mag_sources:
+            self._mag_selected_source_id = next(iter(self._mag_sources))
+
+    def _ensure_magnetometer_method_state(self) -> None:
+        if not hasattr(self, "_mag_methods"):
+            self._mag_methods = {}
+        if not hasattr(self, "_mag_selected_method_id"):
+            self._mag_selected_method_id = None
+        if not hasattr(self, "_mag_latest_derived_streams"):
+            self._mag_latest_derived_streams = {}
+        if not hasattr(self, "_mag_primary_heading_stream_id"):
+            self._mag_primary_heading_stream_id = "raw_heading"
+        if not hasattr(self, "_mag_last_live_snapshot"):
+            self._mag_last_live_snapshot = None
+        if not hasattr(self, "_mag_metrics_report"):
+            self._mag_metrics_report = None
+
+    def _ensure_magnetometer_calibration_state(self) -> None:
+        if not hasattr(self, "_mag_calibration_results"):
+            self._mag_calibration_results = queue.Queue()
+        if not hasattr(self, "_mag_calibration_jobs"):
+            self._mag_calibration_jobs = {}
+
+    def _refresh_magnetometer_sources_ui(self) -> None:
+        self._ensure_magnetometer_source_state()
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None:
+            return
+        magnetometer_tab.set_source_states(self._mag_sources, self._mag_selected_source_id)
+        self._refresh_magnetometer_heading_routing_ui()
+
+    def _refresh_magnetometer_methods_ui(self) -> None:
+        self._ensure_magnetometer_method_state()
+        self._ensure_magnetometer_calibration_state()
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None:
+            return
+        method_states = {
+            method_id: {
+                "name": plugin.name,
+                "version": plugin.version,
+                "status": plugin.display_status(),
+                "status_text": plugin.display_status_text(),
+                "progress": plugin.calibration_progress if (plugin.is_calibrating or plugin.calibration_params is not None) else 0.0,
+                "show": plugin.show_enabled,
+                "show_enabled": plugin.can_toggle_show(),
+                "can_calibrate": plugin.can_start_calibration(),
+                "can_load_params": plugin.can_load_params(),
+                "can_save_params": plugin.can_save_params(),
+                "realtime_enabled": plugin.realtime_enabled,
+                "can_enable_realtime": plugin.can_enable_realtime(),
+                "can_disable_realtime": plugin.can_disable_realtime(),
+                "record": plugin.record_enabled,
+                "can_record": plugin.can_toggle_record(),
+                "stream_id": plugin.derived_stream_id or f"derived_{plugin.method_id}",
+                "live_output": dict(plugin.last_output) if plugin.last_output is not None else None,
+            }
+            for method_id, plugin in self._mag_methods.items()
+        }
+        magnetometer_tab.set_method_states(method_states, self._mag_selected_method_id)
+        selected = self._mag_methods.get(self._mag_selected_method_id or "")
+        if selected is None:
+            magnetometer_tab.update_selected_method_details(
+                name="-",
+                version="-",
+                path="-",
+                status="-",
+                capabilities="-",
+            )
+            magnetometer_tab.set_selected_method_actions(
+                can_calibrate=False,
+                can_load_params=False,
+                can_save_params=False,
+                can_enable_realtime=False,
+                can_disable_realtime=False,
+            )
+            return
+        magnetometer_tab.update_selected_method_details(
+            name=selected.name,
+            version=selected.version,
+            path=selected.file_path,
+            status=selected.display_status_text(),
+            capabilities=selected.capabilities_label(),
+        )
+        magnetometer_tab.set_selected_method_actions(
+            can_calibrate=selected.can_start_calibration(),
+            can_load_params=selected.can_load_params(),
+            can_save_params=selected.can_save_params(),
+            can_enable_realtime=selected.can_enable_realtime(),
+            can_disable_realtime=selected.can_disable_realtime(),
+        )
+        self._refresh_magnetometer_heading_routing_ui()
+
+    def _available_magnetometer_heading_streams(self) -> list[tuple[str, str]]:
+        self._ensure_magnetometer_method_state()
+        streams: list[tuple[str, str]] = [("raw_heading", "Raw Heading")]
+        for method_id, plugin in self._mag_methods.items():
+            if plugin.realtime_enabled or plugin.last_output is not None:
+                streams.append((method_id, plugin.name))
+        return streams
+
+    def _refresh_magnetometer_heading_routing_ui(self) -> None:
+        self._ensure_magnetometer_method_state()
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None:
+            return
+        stream_choices = self._available_magnetometer_heading_streams()
+        available_ids = {stream_id for stream_id, _ in stream_choices}
+        if self._mag_primary_heading_stream_id not in available_ids:
+            self._mag_primary_heading_stream_id = "raw_heading"
+        magnetometer_tab.set_heading_routing(
+            stream_choices=stream_choices,
+            primary_stream_id=self._mag_primary_heading_stream_id,
+        )
+        if self._mag_last_live_snapshot is not None:
+            selected_heading, selected_source_label = self._resolve_magnetometer_selected_output(
+                self._mag_last_live_snapshot.get("raw_heading"),
+                self._mag_last_live_snapshot.get("derived_streams", {}),
+            )
+            magnetometer_tab.set_primary_output_display(
+                heading=selected_heading,
+                source_label=selected_source_label,
+            )
+
+    def _dataset_dialog_label(self, dataset: Dataset) -> str:
+        summary = dataset.summary()
+        return f"{summary['name']}  [{summary['row_count']} rows, {summary['time_range']}]"
+
+    def _dataset_choice_labels(self) -> list[str]:
+        seen: dict[str, int] = {}
+        labels: list[str] = []
+        for dataset in self._mag_datasets:
+            base_name = dataset.summary()["name"]
+            count = seen.get(base_name, 0) + 1
+            seen[base_name] = count
+            labels.append(base_name if count == 1 else f"{base_name} ({count})")
+        return labels
+
+    def _rebuild_magnetometer_dataset_table(self) -> None:
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None:
+            return
+        if self._mag_dataset is None:
+            magnetometer_tab.clear_dataset_rows()
+            return
+        magnetometer_tab.set_dataset_records(self._mag_dataset.records)
+
+    def _set_active_magnetometer_dataset(self, dataset: Dataset | None) -> None:
+        self._mag_dataset = dataset
+        self._mag_dataset_export_path = "" if dataset is None or dataset.source_path is None else dataset.source_path
+        self._rebuild_magnetometer_dataset_table()
+        self._refresh_magnetometer_dataset_ui()
+        self._refresh_magnetometer_metrics_ui()
+
+    def _refresh_magnetometer_dataset_ui(self) -> None:
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None:
+            return
+        dataset_labels = self._dataset_choice_labels()
+        active_index = None
+        if self._mag_dataset is not None:
+            try:
+                active_index = self._mag_datasets.index(self._mag_dataset)
+            except ValueError:
+                active_index = None
+        magnetometer_tab.set_dataset_choices(dataset_labels, active_index)
+        if self._mag_dataset is None:
+            magnetometer_tab.update_dataset_summary(name="—", row_count="0", source_count="0", time_range="—")
+            magnetometer_tab.set_recording_state(
+                is_recording=self._mag_recording_active,
+                can_save=False,
+                has_dataset=False,
+                can_concatenate=len(self._mag_datasets) >= 2,
+            )
+            magnetometer_tab.clear_dataset_rows()
+            return
+        summary = self._mag_dataset.summary()
+        active_name = summary["name"] if active_index is None else dataset_labels[active_index]
+        magnetometer_tab.update_dataset_summary(
+            name=active_name,
+            row_count=summary["row_count"],
+            source_count=summary["source_count"],
+            time_range=summary["time_range"],
+        )
+        can_save = bool(self._mag_dataset.records) and not self._mag_recording_active
+        magnetometer_tab.set_recording_state(
+            is_recording=self._mag_recording_active,
+            can_save=can_save,
+            has_dataset=bool(self._mag_dataset.records),
+            can_concatenate=len(self._mag_datasets) >= 2,
+        )
+        self._mag_last_dataset_ui_refresh_s = time.monotonic()
+
+    def _refresh_magnetometer_dataset_ui_if_due(self, *, force: bool = False) -> None:
+        if not hasattr(self, "_mag_last_dataset_ui_refresh_s"):
+            self._mag_last_dataset_ui_refresh_s = 0.0
+        if not hasattr(self, "_mag_dataset_ui_refresh_interval_s"):
+            self._mag_dataset_ui_refresh_interval_s = 0.2
+        now = time.monotonic()
+        if force or (now - self._mag_last_dataset_ui_refresh_s) >= self._mag_dataset_ui_refresh_interval_s:
+            self._refresh_magnetometer_dataset_ui()
+
+    def _on_magnetometer_start_record(self) -> None:
+        dataset = Dataset(self._make_magnetometer_dataset_name())
+        self._mag_recording_active = True
+        self._mag_datasets.append(dataset)
+        self._set_active_magnetometer_dataset(dataset)
+        self._mag_dataset_export_path = ""
+        self._refresh_magnetometer_dataset_ui()
+
+    def _on_magnetometer_stop_record(self) -> None:
+        if not self._mag_recording_active:
+            return
+        self._mag_recording_active = False
+        self._refresh_magnetometer_dataset_ui()
+
+    def _record_magnetometer_sample(
+        self,
+        *,
+        timestamp_mcu: int,
+        timestamp_pc_rx: int,
+        timestamp_pc_est: int | None,
+        mx: float,
+        my: float,
+        mz: float,
+        derived_records: Sequence[SampleRecord] | None = None,
+    ) -> None:
+        self._ensure_magnetometer_source_state()
+        if not self._mag_recording_active or self._mag_dataset is None:
+            return
+        heading = compute_raw_heading_deg(mx, my)
+        next_row_id = len(self._mag_dataset.records)
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        appended = False
+
+        if bool(self._mag_sources["raw_magnetometer"]["record"]):
+            next_row_id += 1
+            record = SampleRecord(
+                stream_id="raw_magnetometer",
+                stream_type="raw",
+                producer_name="Raw Magnetometer",
+                producer_version="builtin",
+                timestamp_mcu=timestamp_mcu,
+                timestamp_pc_rx=timestamp_pc_rx,
+                timestamp_pc_est=timestamp_pc_est,
+                mag_x=mx,
+                mag_y=my,
+                mag_z=mz,
+                heading=heading,
+                flags="",
+            )
+            self._mag_dataset.append(record)
+            if magnetometer_tab is not None:
+                magnetometer_tab.append_dataset_record(next_row_id, record)
+            appended = True
+
+        if bool(self._mag_sources["raw_heading"]["record"]):
+            next_row_id += 1
+            record = SampleRecord(
+                stream_id="raw_heading",
+                stream_type="raw",
+                producer_name="Raw Heading",
+                producer_version="builtin",
+                timestamp_mcu=timestamp_mcu,
+                timestamp_pc_rx=timestamp_pc_rx,
+                timestamp_pc_est=timestamp_pc_est,
+                mag_x=mx,
+                mag_y=my,
+                mag_z=mz,
+                heading=heading,
+                flags="heading_only",
+            )
+            self._mag_dataset.append(record)
+            if magnetometer_tab is not None:
+                magnetometer_tab.append_dataset_record(next_row_id, record)
+            appended = True
+
+        for record in derived_records or ():
+            next_row_id += 1
+            self._mag_dataset.append(record)
+            if magnetometer_tab is not None:
+                magnetometer_tab.append_dataset_record(next_row_id, record)
+            appended = True
+
+        if not appended:
+            return
+        self._refresh_magnetometer_dataset_ui_if_due(force=not self._mag_recording_active)
+
+    def _choose_magnetometer_dataset_load_path(self) -> str:
+        return filedialog.askopenfilename(
+            title="Load magnetometer dataset",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+
+    def _choose_magnetometer_dataset_load_paths(self) -> tuple[str, ...]:
+        return filedialog.askopenfilenames(
+            title="Load magnetometer datasets",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+
+    def _choose_magnetometer_dataset_path(self) -> str:
+        return filedialog.asksaveasfilename(
+            title="Save magnetometer dataset",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+
+    def _choose_magnetometer_params_load_path(self) -> str:
+        return filedialog.askopenfilename(
+            title="Load magnetometer params",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+
+    def _choose_magnetometer_params_save_path(self) -> str:
+        return filedialog.asksaveasfilename(
+            title="Save magnetometer params",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+
+    def _choose_magnetometer_metrics_path(self) -> str:
+        return filedialog.asksaveasfilename(
+            title="Export magnetometer metrics",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+
+    def _selected_magnetometer_plugin(self) -> LoadedMethodPlugin | None:
+        self._ensure_magnetometer_method_state()
+        if self._mag_selected_method_id is None:
+            return None
+        return self._mag_methods.get(self._mag_selected_method_id)
+
+    def _refresh_magnetometer_metrics_ui(self) -> None:
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None:
+            return
+        report = compute_metrics_report(getattr(self, "_mag_dataset", None), self._selected_magnetometer_plugin())
+        self._mag_metrics_report = report
+        rows = [
+            {
+                "metric": row.label,
+                "value": row.value_text(),
+                "units": row.units,
+                "status": row.status,
+                "notes": row.notes,
+            }
+            for row in report.rows
+        ]
+        magnetometer_tab.set_metrics_report(
+            rows=rows,
+            summary_text=report.summary_text,
+            can_export=bool(report.rows),
+        )
+
+    def _on_magnetometer_export_metrics_csv(self) -> None:
+        report = self._mag_metrics_report
+        if report is None or not report.rows:
+            messagebox.showinfo("Magnetometer Metrics", "There are no metrics to export yet.")
+            return
+        path = self._choose_magnetometer_metrics_path()
+        if not path:
+            return
+        try:
+            report.export_csv(path)
+        except Exception as exc:
+            messagebox.showerror("Magnetometer Metrics", f"Failed to export metrics: {exc}")
+
+    def _load_magnetometer_dataset_paths(self, paths: Sequence[str]) -> int:
+        loaded: list[Dataset] = []
+        errors: list[str] = []
+        for path in paths:
+            try:
+                dataset = Dataset.from_csv(path)
+            except Exception as exc:
+                errors.append(f"{os.path.basename(path)}: {exc}")
+                continue
+            self._mag_datasets.append(dataset)
+            loaded.append(dataset)
+
+        if loaded:
+            self._set_active_magnetometer_dataset(loaded[-1])
+        if errors:
+            messagebox.showerror("Magnetometer Dataset", "Failed to load:\n" + "\n".join(errors))
+        return len(loaded)
+
+    def _save_magnetometer_dataset_to_path(self, path: str) -> bool:
+        if self._mag_dataset is None or not self._mag_dataset.records:
+            messagebox.showinfo("Magnetometer Dataset", "There is no recorded dataset to save.")
+            return False
+        try:
+            self._mag_dataset.to_csv(path)
+        except Exception as exc:
+            messagebox.showerror("Magnetometer Dataset", f"Failed to save dataset: {exc}")
+            return False
+        self._mag_dataset_export_path = path
+        self._refresh_magnetometer_dataset_ui()
+        return True
+
+    def _on_magnetometer_load_csv(self) -> None:
+        if self._mag_recording_active:
+            return
+        path = self._choose_magnetometer_dataset_load_path()
+        if not path:
+            return
+        self._load_magnetometer_dataset_paths((path,))
+
+    def _on_magnetometer_load_multiple(self) -> None:
+        if self._mag_recording_active:
+            return
+        paths = self._choose_magnetometer_dataset_load_paths()
+        if not paths:
+            return
+        self._load_magnetometer_dataset_paths(paths)
+
+    def _on_select_magnetometer_dataset(self, index: int) -> None:
+        if self._mag_recording_active:
+            return
+        if 0 <= index < len(self._mag_datasets):
+            self._set_active_magnetometer_dataset(self._mag_datasets[index])
+
+    def _on_select_magnetometer_source(self, source_id: str) -> None:
+        self._ensure_magnetometer_source_state()
+        if source_id not in self._mag_sources:
+            return
+        self._mag_selected_source_id = source_id
+        self._refresh_magnetometer_sources_ui()
+
+    def _on_toggle_magnetometer_source_show(self, source_id: str, enabled: bool) -> None:
+        self._ensure_magnetometer_source_state()
+        if source_id not in self._mag_sources:
+            return
+        self._mag_sources[source_id]["show"] = bool(enabled)
+        self._refresh_magnetometer_sources_ui()
+
+    def _on_toggle_magnetometer_source_record(self, source_id: str, enabled: bool) -> None:
+        self._ensure_magnetometer_source_state()
+        if source_id not in self._mag_sources:
+            return
+        self._mag_sources[source_id]["record"] = bool(enabled)
+        self._refresh_magnetometer_sources_ui()
+
+    def _on_toggle_magnetometer_method_show(self, method_id: str, enabled: bool) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        plugin.show_enabled = bool(enabled)
+        stream_state = self._mag_latest_derived_streams.get(method_id)
+        if stream_state is not None:
+            stream_state["show"] = plugin.show_enabled
+        self._refresh_magnetometer_methods_ui()
+
+    def _on_enable_magnetometer_method_realtime(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        if not plugin.can_enable_realtime():
+            if plugin.calibration_params is None:
+                plugin.process_warnings = ["Load or create calibration params before enabling realtime."]
+                self._refresh_magnetometer_methods_ui()
+                messagebox.showwarning(
+                    "Magnetometer Realtime",
+                    f"{plugin.name} requires calibration params before realtime can be enabled.",
+                )
+            return
+        plugin.realtime_enabled = True
+        plugin.show_enabled = True
+        plugin.process_warnings = []
+        self._refresh_magnetometer_methods_ui()
+
+    def _on_disable_magnetometer_method_realtime(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        plugin.realtime_enabled = False
+        plugin.record_enabled = False
+        plugin.last_output = None
+        self._mag_latest_derived_streams.pop(method_id, None)
+        self._refresh_magnetometer_methods_ui()
+
+    def _on_toggle_magnetometer_method_record(self, method_id: str, enabled: bool) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        if not plugin.can_toggle_record() and enabled:
+            return
+        plugin.record_enabled = bool(enabled and plugin.realtime_enabled)
+        self._refresh_magnetometer_methods_ui()
+
+    def _on_select_magnetometer_primary_heading(self, stream_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        available_ids = {stream_id for stream_id, _ in self._available_magnetometer_heading_streams()}
+        if stream_id not in available_ids:
+            return
+        self._mag_primary_heading_stream_id = stream_id
+        self._refresh_magnetometer_heading_routing_ui()
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is None or self._mag_last_live_snapshot is None:
+            return
+        selected_heading, selected_source_label = self._resolve_magnetometer_selected_output(
+            self._mag_last_live_snapshot.get("raw_heading"),
+            self._mag_last_live_snapshot.get("derived_streams", {}),
+        )
+        magnetometer_tab.set_primary_output_display(
+            heading=selected_heading,
+            source_label=selected_source_label,
+        )
+
+    def _make_magnetometer_method_diagnostics(
+        self,
+        plugin: LoadedMethodPlugin,
+        *,
+        last_action: str,
+        error_text: str,
+        traceback_text: str = "",
+        warnings: Sequence[str] | None = None,
+    ) -> PluginDiagnostics:
+        return PluginDiagnostics(
+            name=plugin.name,
+            version=plugin.version,
+            file_path=plugin.file_path,
+            last_action=last_action,
+            error_text=error_text,
+            traceback_text=traceback_text,
+            warnings=list(warnings or plugin.effective_warnings()),
+        )
+
+    def _snapshot_magnetometer_dataset(self, dataset: Dataset) -> Dataset:
+        return Dataset(dataset.name, records=list(dataset.records), source_path=dataset.source_path)
+
+    def _on_calibrate_magnetometer_method(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        self._ensure_magnetometer_calibration_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        if not plugin.supports_calibrate():
+            messagebox.showwarning("Magnetometer Calibration", f"{plugin.name} does not support calibration.")
+            return
+        if plugin.is_calibrating:
+            return
+        dataset = self._mag_dataset
+        if dataset is None or not dataset.records:
+            plugin.calibration_warnings = ["No active non-empty dataset loaded for calibration."]
+            self._refresh_magnetometer_methods_ui()
+            messagebox.showwarning("Magnetometer Calibration", "Load or record a non-empty dataset first.")
+            return
+
+        dataset_snapshot = self._snapshot_magnetometer_dataset(dataset)
+        plugin.status = plugin.load_status
+        plugin.diagnostics = None
+        plugin.calibration_warnings = []
+        plugin.calibration_report = ""
+        plugin.params_warnings = []
+        plugin.calibration_progress = 0.0
+        plugin.calibration_runtime_s = None
+        plugin.is_calibrating = True
+        self._mag_calibration_jobs[method_id] = {
+            "started_at": time.monotonic(),
+            "dataset_name": dataset_snapshot.summary()["name"],
+        }
+        self._refresh_magnetometer_methods_ui()
+
+        worker = threading.Thread(
+            target=self._run_magnetometer_calibration_worker,
+            args=(method_id, plugin, dataset_snapshot),
+            name=f"mag-calibrate-{method_id}",
+            daemon=True,
+        )
+        worker.start()
+
+    def _run_magnetometer_calibration_worker(
+        self,
+        method_id: str,
+        plugin: LoadedMethodPlugin,
+        dataset: Dataset,
+    ) -> None:
+        result = run_method_calibration(plugin, dataset)
+        self._mag_calibration_results.put((method_id, result))
+
+    def _apply_magnetometer_calibration_result(self, method_id: str, result: CalibrationRunResult) -> None:
+        self._ensure_magnetometer_method_state()
+        self._ensure_magnetometer_calibration_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            self._mag_calibration_jobs.pop(method_id, None)
+            return
+
+        job = self._mag_calibration_jobs.pop(method_id, None)
+        plugin.is_calibrating = False
+        plugin.calibration_progress = 1.0 if result.ok else 0.0
+        if job is not None:
+            plugin.calibration_dataset_name = str(job.get("dataset_name") or "")
+            plugin.calibration_runtime_s = max(0.0, time.monotonic() - float(job.get("started_at", time.monotonic())))
+
+        if result.ok:
+            plugin.status = plugin.load_status
+            plugin.diagnostics = None
+            plugin.calibration_params = result.params
+            plugin.calibration_warnings = list(result.warnings)
+            plugin.params_warnings = []
+            plugin.process_warnings = []
+            plugin.calibration_report = result.report
+        else:
+            plugin.status = "error"
+            plugin.calibration_warnings = list(result.warnings)
+            plugin.calibration_report = result.report
+            plugin.process_warnings = []
+            plugin.realtime_enabled = False
+            plugin.record_enabled = False
+            plugin.last_output = None
+            self._mag_latest_derived_streams.pop(method_id, None)
+            if result.diagnostics is not None:
+                plugin.diagnostics = result.diagnostics
+            else:
+                plugin.diagnostics = self._make_magnetometer_method_diagnostics(
+                    plugin,
+                    last_action="calibrate",
+                    error_text="Calibration failed.",
+                    warnings=result.warnings,
+                )
+
+        self._refresh_magnetometer_methods_ui()
+        if plugin.status == "error":
+            self._open_magnetometer_method_diagnostics(method_id)
+        self._refresh_magnetometer_metrics_ui()
+
+    def _poll_magnetometer_calibration_jobs(self) -> None:
+        self._ensure_magnetometer_method_state()
+        self._ensure_magnetometer_calibration_state()
+        refresh_needed = False
+        now = time.monotonic()
+        for method_id, job in list(self._mag_calibration_jobs.items()):
+            plugin = self._mag_methods.get(method_id)
+            if plugin is None or not plugin.is_calibrating:
+                continue
+            elapsed = max(0.0, now - float(job.get("started_at", now)))
+            progress = min(0.92, 0.08 + elapsed / 2.5)
+            if abs(progress - plugin.calibration_progress) >= 0.02:
+                plugin.calibration_progress = progress
+                refresh_needed = True
+
+        while True:
+            try:
+                method_id, result = self._mag_calibration_results.get_nowait()
+            except queue.Empty:
+                break
+            self._apply_magnetometer_calibration_result(method_id, result)
+            refresh_needed = False
+
+        if refresh_needed:
+            self._refresh_magnetometer_methods_ui()
+
+    def _apply_magnetometer_param_io_result(
+        self,
+        method_id: str,
+        result: ParamIoResult,
+        *,
+        action: str,
+        path: str,
+    ) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+
+        if result.ok:
+            plugin.status = plugin.load_status
+            plugin.diagnostics = None
+            plugin.params_warnings = list(result.warnings)
+            plugin.process_warnings = []
+            if action == "load":
+                plugin.calibration_params = result.params
+                plugin.params_profile_path = path
+                plugin.calibration_report = ""
+                plugin.calibration_progress = 1.0
+            elif action == "save" and result.params is not None:
+                plugin.calibration_params = result.params
+                plugin.params_profile_path = path
+            self._refresh_magnetometer_methods_ui()
+            if result.warnings:
+                messagebox.showwarning(
+                    "Magnetometer Params",
+                    "Param profile loaded with warnings:\n" + "\n".join(result.warnings)
+                    if action == "load"
+                        else "Param profile saved with warnings:\n" + "\n".join(result.warnings),
+                )
+            self._refresh_magnetometer_metrics_ui()
+            return
+
+        plugin.status = "error"
+        if result.diagnostics is not None:
+            plugin.diagnostics = result.diagnostics
+        else:
+            plugin.diagnostics = self._make_magnetometer_method_diagnostics(
+                plugin,
+                last_action=f"{action}_params",
+                error_text=f"{action.title()} params failed.",
+                warnings=result.warnings,
+            )
+        self._refresh_magnetometer_methods_ui()
+        self._open_magnetometer_method_diagnostics(method_id)
+        self._refresh_magnetometer_metrics_ui()
+
+    def _on_load_magnetometer_method_params(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        if not plugin.can_load_params():
+            messagebox.showwarning("Magnetometer Params", f"{plugin.name} does not support param loading right now.")
+            return
+        path = self._choose_magnetometer_params_load_path()
+        if not path:
+            return
+        result = load_method_params(plugin, path)
+        self._apply_magnetometer_param_io_result(method_id, result, action="load", path=path)
+
+    def _on_save_magnetometer_method_params(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        if not plugin.can_save_params():
+            messagebox.showwarning("Magnetometer Params", f"{plugin.name} has no runtime params available to save.")
+            return
+        path = self._choose_magnetometer_params_save_path()
+        if not path:
+            return
+        result = save_method_params(plugin, path, plugin.calibration_params)
+        self._apply_magnetometer_param_io_result(method_id, result, action="save", path=path)
+
+    def _make_magnetometer_method_id(self) -> str:
+        self._ensure_magnetometer_method_state()
+        return f"method_{len(self._mag_methods) + 1}"
+
+    def _register_magnetometer_method(self, plugin: LoadedMethodPlugin) -> LoadedMethodPlugin:
+        self._ensure_magnetometer_method_state()
+        plugin.method_id = self._make_magnetometer_method_id()
+        plugin.derived_stream_id = f"derived_{plugin.method_id}"
+        self._mag_methods[plugin.method_id] = plugin
+        self._mag_selected_method_id = plugin.method_id
+        self._refresh_magnetometer_methods_ui()
+        self._refresh_magnetometer_metrics_ui()
+        return plugin
+
+    def _on_magnetometer_add_plugin(self) -> None:
+        dlg = AddPluginDialog(self.root)
+        self.root.wait_window(dlg)
+        if not dlg.result:
+            return
+        plugin = load_method_plugin(dlg.result["path"])
+        plugin = self._register_magnetometer_method(plugin)
+        if plugin.status == "error":
+            self._open_magnetometer_method_diagnostics(plugin.method_id)
+
+    def _on_select_magnetometer_method(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        if method_id not in self._mag_methods:
+            return
+        self._mag_selected_method_id = method_id
+        self._refresh_magnetometer_methods_ui()
+        self._refresh_magnetometer_metrics_ui()
+        if self._mag_methods[method_id].status == "error":
+            self._open_magnetometer_method_diagnostics(method_id)
+
+    def _on_open_magnetometer_method_info(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        if plugin.status == "error":
+            self._open_magnetometer_method_diagnostics(method_id)
+            return
+        dlg = MethodInfoDialog(
+            self.root,
+            title=f"Method Info — {plugin.name}",
+            info_text=format_method_info_text(plugin.info, file_path=plugin.file_path),
+        )
+        self.root.wait_window(dlg)
+
+    def _open_magnetometer_method_diagnostics(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        diagnostics = plugin.diagnostics
+        if diagnostics is None:
+            return
+        dlg = MethodDiagnosticsDialog(
+            self.root,
+            title=f"Method Diagnostics — {plugin.name}",
+            diagnostics=diagnostics.as_dict(),
+        )
+        self.root.wait_window(dlg)
+
+    def _on_magnetometer_save_current(self) -> None:
+        path = self._mag_dataset_export_path
+        if not path and self._mag_dataset is not None and self._mag_dataset.source_path:
+            path = self._mag_dataset.source_path
+        if not path:
+            path = self._choose_magnetometer_dataset_path()
+        if not path:
+            return
+        self._save_magnetometer_dataset_to_path(path)
+
+    def _on_magnetometer_save_as(self) -> None:
+        path = self._choose_magnetometer_dataset_path()
+        if not path:
+            return
+        self._save_magnetometer_dataset_to_path(path)
+
+    def _concatenate_selected_magnetometer_datasets(self, selected_indices: Sequence[int]) -> Dataset | None:
+        datasets = [
+            self._mag_datasets[index]
+            for index in selected_indices
+            if 0 <= index < len(self._mag_datasets)
+        ]
+        if len(datasets) < 2:
+            return None
+
+        merged = Dataset(self._make_concatenated_magnetometer_dataset_name())
+        for dataset in datasets:
+            merged.extend(list(dataset.records))
+        self._mag_datasets.append(merged)
+        self._set_active_magnetometer_dataset(merged)
+        return merged
+
+    def _on_magnetometer_concatenate(self) -> None:
+        if self._mag_recording_active:
+            return
+        if len(self._mag_datasets) < 2:
+            messagebox.showinfo("Magnetometer Dataset", "Load at least two datasets before concatenation.")
+            return
+        items = [self._dataset_dialog_label(dataset) for dataset in self._mag_datasets]
+        dlg = DatasetSelectionDialog(
+            self.root,
+            title="Concatenate Datasets",
+            prompt="Select datasets to concatenate:",
+            items=items,
+            preselected=list(range(len(items))),
+        )
+        self.root.wait_window(dlg)
+        if dlg.result is None:
+            return
+        if len(dlg.result) < 2:
+            messagebox.showinfo("Magnetometer Dataset", "Select at least two datasets to concatenate.")
+            return
+        self._concatenate_selected_magnetometer_datasets(dlg.result)
+
+    def _trim_active_magnetometer_dataset(self, selected_indices: Sequence[int]) -> bool:
+        if self._mag_dataset is None or not selected_indices:
+            return False
+        self._mag_dataset.trim(min(selected_indices), max(selected_indices))
+        self._rebuild_magnetometer_dataset_table()
+        self._refresh_magnetometer_dataset_ui()
+        self._refresh_magnetometer_metrics_ui()
+        return True
+
+    def _delete_active_magnetometer_rows(self, selected_indices: Sequence[int]) -> bool:
+        if self._mag_dataset is None or not selected_indices:
+            return False
+        self._mag_dataset.delete_rows(list(selected_indices))
+        self._rebuild_magnetometer_dataset_table()
+        self._refresh_magnetometer_dataset_ui()
+        self._refresh_magnetometer_metrics_ui()
+        return True
+
+    def _on_magnetometer_trim_selection(self) -> None:
+        if self._mag_recording_active:
+            return
+        if self._mag_dataset is None:
+            messagebox.showinfo("Magnetometer Dataset", "There is no active dataset.")
+            return
+        selected_indices = self.magnetometer_tab.get_selected_dataset_row_indices()
+        if not selected_indices:
+            messagebox.showinfo("Magnetometer Dataset", "Select one or more rows in the Data table.")
+            return
+        self._trim_active_magnetometer_dataset(selected_indices)
+
+    def _on_magnetometer_delete_selection(self) -> None:
+        if self._mag_recording_active:
+            return
+        if self._mag_dataset is None:
+            messagebox.showinfo("Magnetometer Dataset", "There is no active dataset.")
+            return
+        selected_indices = self.magnetometer_tab.get_selected_dataset_row_indices()
+        if not selected_indices:
+            messagebox.showinfo("Magnetometer Dataset", "Select one or more rows in the Data table.")
+            return
+        self._delete_active_magnetometer_rows(selected_indices)
 
     def _update_mcu_time_label(self) -> None:
         rx = "—" if self._last_mcu_ts_u32 is None else str(self._last_mcu_ts_u32)
