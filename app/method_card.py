@@ -31,7 +31,9 @@ class MethodCard(tk.Frame):
         on_load_params: Callable[[str], None] | None = None,
         on_save_params: Callable[[str], None] | None = None,
         on_show_change: Callable[[str, bool], None] | None = None,
+        on_record_change: Callable[[str, bool], None] | None = None,
         on_toggle_realtime: Callable[[str], None] | None = None,
+        on_remove: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(
             master,
@@ -51,7 +53,9 @@ class MethodCard(tk.Frame):
         self._on_load_params = on_load_params
         self._on_save_params = on_save_params
         self._on_show_change = on_show_change
+        self._on_record_change = on_record_change
         self._on_toggle_realtime = on_toggle_realtime
+        self._on_remove = on_remove
         self._title = title
 
         body = ttk.Frame(self, padding=8)
@@ -61,8 +65,10 @@ class MethodCard(tk.Frame):
         header.pack(fill="x")
         self.title_label = ttk.Label(header, text=title, font=("TkDefaultFont", 10, "bold"))
         self.title_label.pack(side="left")
+        self.remove_btn = ttk.Button(header, text="×", width=2, command=self._handle_remove)
+        self.remove_btn.pack(side="right", padx=(6, 0))
         self.status_label = tk.Label(header, text="PARTIAL", bg=COLOR_GRAY, fg="#000000", padx=6, pady=2)
-        self.status_label.pack(side="right")
+        self.status_label.pack(side="right", padx=(0, 4))
 
         self.version_label = ttk.Label(body, text=f"Version: {version}")
         self.version_label.pack(anchor="w", pady=(6, 0))
@@ -72,6 +78,15 @@ class MethodCard(tk.Frame):
         self.show_var = tk.BooleanVar(value=False)
         self.show_btn = ttk.Checkbutton(row1, text="Show", variable=self.show_var, command=self._handle_show_change)
         self.show_btn.pack(side="left")
+        self.record_var = tk.BooleanVar(value=False)
+        self.record_btn = ttk.Checkbutton(
+            row1,
+            text="Record",
+            variable=self.record_var,
+            command=self._handle_record_change,
+            state="disabled",
+        )
+        self.record_btn.pack(side="left", padx=(8, 0))
         self.calibrate_btn = ttk.Button(row1, text="Calibrate", command=self._handle_calibrate, state="disabled")
         self.calibrate_btn.pack(side="left", padx=(8, 0))
         self.info_btn = ttk.Button(row1, text="Info", command=self._handle_info)
@@ -123,6 +138,12 @@ class MethodCard(tk.Frame):
     def set_show(self, enabled: bool) -> None:
         self.show_var.set(bool(enabled))
 
+    def set_record(self, enabled: bool) -> None:
+        self.record_var.set(bool(enabled))
+
+    def set_record_enabled(self, enabled: bool) -> None:
+        self.record_btn.configure(state="normal" if enabled else "disabled")
+
     def set_calibrate_enabled(self, enabled: bool) -> None:
         self.calibrate_btn.configure(state="normal" if enabled else "disabled")
 
@@ -170,9 +191,17 @@ class MethodCard(tk.Frame):
         if self._on_show_change is not None:
             self._on_show_change(self.method_id, bool(self.show_var.get()))
 
+    def _handle_record_change(self) -> None:
+        if self._on_record_change is not None:
+            self._on_record_change(self.method_id, bool(self.record_var.get()))
+
     def _handle_toggle_realtime(self) -> None:
         if self._on_toggle_realtime is not None:
             self._on_toggle_realtime(self.method_id)
 
     def _handle_progress_canvas_resize(self, _event: tk.Event) -> None:
         self.set_progress(self._progress_value, color=self._progress_color)
+
+    def _handle_remove(self) -> None:
+        if self._on_remove is not None:
+            self._on_remove(self.method_id)

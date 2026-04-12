@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,6 +20,7 @@ CSV_COLUMNS = (
     "heading",
     "flags",
 )
+METADATA_PREFIX = "# magnetometer_metadata="
 
 
 def _format_scalar(value: object) -> str:
@@ -104,10 +106,12 @@ class Dataset:
         *,
         records: list[SampleRecord] | None = None,
         source_path: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         self.name = name
         self.source_path = source_path
         self.records: list[SampleRecord] = list(records or [])
+        self.metadata: dict[str, Any] = dict(metadata or {})
 
     def append(self, record: SampleRecord) -> None:
         self.records.append(record)
@@ -136,6 +140,8 @@ class Dataset:
 
     def to_csv(self, path: str) -> None:
         with open(path, "w", encoding="utf-8", newline="") as fh:
+            if self.metadata:
+                fh.write(f"{METADATA_PREFIX}{json.dumps(self.metadata, ensure_ascii=False, separators=(',', ':'))}\n")
             writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
             writer.writeheader()
             for record in self.records:
@@ -144,14 +150,29 @@ class Dataset:
 
     @classmethod
     def from_csv(cls, path: str) -> Dataset:
+        metadata: dict[str, Any] = {}
         with open(path, "r", encoding="utf-8", newline="") as fh:
-            reader = csv.DictReader(fh)
+            data_lines: list[str] = []
+            for raw_line in fh:
+                if raw_line.startswith("#"):
+                    stripped = raw_line.strip()
+                    if stripped.startswith(METADATA_PREFIX):
+                        payload = stripped[len(METADATA_PREFIX):].strip()
+                        try:
+                            loaded_metadata = json.loads(payload)
+                        except Exception:
+                            loaded_metadata = {}
+                        if isinstance(loaded_metadata, dict):
+                            metadata.update(loaded_metadata)
+                    continue
+                data_lines.append(raw_line)
+            reader = csv.DictReader(data_lines)
             fieldnames = reader.fieldnames or []
             missing = [column for column in CSV_COLUMNS if column not in fieldnames]
             if missing:
                 raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
             records = [SampleRecord.from_csv_row(row) for row in reader]
-        return cls(os.path.basename(path), records=records, source_path=path)
+        return cls(os.path.basename(path), records=records, source_path=path, metadata=metadata)
 
     def summary(self) -> dict[str, str]:
         if not self.records:

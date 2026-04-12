@@ -46,7 +46,7 @@ class MagnetometerDatasetTests(unittest.TestCase):
         self.assertEqual([record.stream_id for record in merged.records], ["a", "b"])
 
     def test_csv_round_trip_keeps_required_schema(self) -> None:
-        dataset = Dataset("round_trip")
+        dataset = Dataset("round_trip", metadata={"filters": [{"name": "Hard Iron", "params": {"offset_x": 1.0}}]})
         dataset.append(
             SampleRecord(
                 "raw_magnetometer",
@@ -72,6 +72,7 @@ class MagnetometerDatasetTests(unittest.TestCase):
             self.assertEqual(len(reopened.records), 1)
             self.assertEqual(reopened.records[0].timestamp_pc_est, 2005)
             self.assertAlmostEqual(reopened.records[0].mag_y, -0.5)
+            self.assertEqual(reopened.metadata["filters"][0]["name"], "Hard Iron")
 
 
 if __name__ == "__main__":

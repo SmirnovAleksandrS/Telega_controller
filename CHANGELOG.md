@@ -23,6 +23,7 @@ Log format: .log (JSON Lines)
   - saves parsed messages to .log as JSONL, includes PC receive time and time model snapshot
 
 ## Unreleased
+- Magnetometer GUI: method cards now expose a `Record` toggle alongside `Show`; enabling realtime defaults the method into recording, CSV metadata now lists recorded streams/methods explicitly, and recorded derived streams continue into the same dataset/point-cloud flow as raw magnetometer samples.
 - External runtime bridge: fixed GUI <-> C++ TCP shutdown lifecycle. `stop` now closes only the active session, while explicit `shutdown`/`kill` terminates the stub process and frees the port.
 - GUI runtime lifecycle: fixed kill/tab-switch paths to call the real external runtime stop method instead of a missing `_stop_external_autopilot`.
 - UART stability: rework serial open/close lifecycle with thread-safe stop/join, per-connection parser/stop event, TX queue flush on reconnect, and safer serial timeouts/cancel_read/cancel_write handling.

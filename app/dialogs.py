@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from dataclasses import dataclass
 
+from app.tk_utils import bind_vertical_mousewheel, prepare_toplevel
 from comm.serial_worker import SerialWorker
 
 @dataclass
@@ -72,18 +73,19 @@ class ComSettingsDialog(tk.Toplevel):
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
+        prepare_toplevel(self, master)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
     def _ok(self) -> None:
         port = self.port_var.get().strip()
         if not port:
-            messagebox.showerror("COM Settings", "Select port")
+            messagebox.showerror("COM Settings", "Select port", parent=self)
             return
         try:
             baud = int(self.baud_var.get().strip())
         except ValueError:
-            messagebox.showerror("COM Settings", "Invalid baudrate")
+            messagebox.showerror("COM Settings", "Invalid baudrate", parent=self)
             return
         self.result = (port, baud)
         self.destroy()
@@ -128,6 +130,7 @@ class DeviationSettingsDialog(tk.Toplevel):
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
+        prepare_toplevel(self, master)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
@@ -143,7 +146,7 @@ class DeviationSettingsDialog(tk.Toplevel):
                 temp_normal=float(tn.get()), temp_delta=float(td.get()),
             )
         except ValueError:
-            messagebox.showerror("Deviation Settings", "Invalid number format")
+            messagebox.showerror("Deviation Settings", "Invalid number format", parent=self)
             return
 
         self.result = new
@@ -183,6 +186,7 @@ class GeometrySettingsDialog(tk.Toplevel):
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
+        prepare_toplevel(self, master)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
@@ -192,13 +196,13 @@ class GeometrySettingsDialog(tk.Toplevel):
             a2 = float(self.a2_var.get())
             drive_wheel_diameter_cm = float(self.drive_wheel_diameter_var.get())
         except ValueError:
-            messagebox.showerror("Geometry Parameters", "Invalid number format")
+            messagebox.showerror("Geometry Parameters", "Invalid number format", parent=self)
             return
         if a1 < 0 or a2 < 0:
-            messagebox.showerror("Geometry Parameters", "A1/A2 must be >= 0")
+            messagebox.showerror("Geometry Parameters", "A1/A2 must be >= 0", parent=self)
             return
         if drive_wheel_diameter_cm <= 0:
-            messagebox.showerror("Geometry Parameters", "Drive wheel diameter must be > 0")
+            messagebox.showerror("Geometry Parameters", "Drive wheel diameter must be > 0", parent=self)
             return
         self.result = GeometryConfig(
             a1_cm=a1,
@@ -244,6 +248,7 @@ class SpeedMapDialog(tk.Toplevel):
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
+        prepare_toplevel(self, master)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
@@ -256,7 +261,7 @@ class SpeedMapDialog(tk.Toplevel):
                 pwm_3=float(p3.get()), speed_3=float(s3.get()),
             )
         except ValueError:
-            messagebox.showerror("Speed Parameters", "Invalid number format")
+            messagebox.showerror("Speed Parameters", "Invalid number format", parent=self)
             return
         self.result = cfg
         self.destroy()
@@ -296,6 +301,7 @@ class DatasetSelectionDialog(tk.Toplevel):
 
         self.listbox = tk.Listbox(list_host, selectmode="extended", height=min(8, max(4, len(items))))
         self.listbox.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.listbox)
         for item in items:
             self.listbox.insert("end", item)
         if preselected:
@@ -312,6 +318,7 @@ class DatasetSelectionDialog(tk.Toplevel):
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=1)
 
+        prepare_toplevel(self, master)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
@@ -325,11 +332,12 @@ class DatasetSelectionDialog(tk.Toplevel):
 
 
 class AddPluginDialog(tk.Toplevel):
-    def __init__(self, master: tk.Widget) -> None:
+    def __init__(self, master: tk.Widget, *, initial_dir: str | None = None) -> None:
         super().__init__(master)
         self.title("Add Source / Method")
         self.resizable(False, False)
         self.result: dict[str, str] | None = None
+        self._initial_dir = initial_dir
 
         frm = ttk.Frame(self, padding=10)
         frm.grid(row=0, column=0, sticky="nsew")
@@ -359,15 +367,19 @@ class AddPluginDialog(tk.Toplevel):
         ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(btns, text="Add", command=self._ok).grid(row=0, column=1)
 
+        prepare_toplevel(self, master)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
     def _browse(self) -> None:
-        default_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "externModules", "magnetometer"))
+        default_dir = self._initial_dir or os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "externModules", "magnetometer")
+        )
         path = filedialog.askopenfilename(
             title="Select Python plugin",
             initialdir=default_dir if os.path.isdir(default_dir) else None,
             filetypes=[("Python files", "*.py"), ("All files", "*.*")],
+            parent=self,
         )
         if path:
             self.path_var.set(path)
@@ -375,7 +387,7 @@ class AddPluginDialog(tk.Toplevel):
     def _ok(self) -> None:
         path = self.path_var.get().strip()
         if not path:
-            messagebox.showerror("Add Source / Method", "Select a Python file.")
+            messagebox.showerror("Add Source / Method", "Select a Python file.", parent=self)
             return
         self.result = {"kind": "method", "path": path}
         self.destroy()
@@ -396,6 +408,7 @@ class MethodInfoDialog(tk.Toplevel):
 
         text = tk.Text(frm, wrap="word")
         text.pack(side="left", fill="both", expand=True)
+        bind_vertical_mousewheel(text)
         text.insert("1.0", info_text)
         text.configure(state="disabled")
 
@@ -403,6 +416,7 @@ class MethodInfoDialog(tk.Toplevel):
         yscroll.pack(side="right", fill="y")
         text.configure(yscrollcommand=yscroll.set)
 
+        prepare_toplevel(self, master)
         self.grab_set()
 
 
@@ -433,6 +447,7 @@ class MethodDiagnosticsDialog(tk.Toplevel):
 
         text = tk.Text(frm, wrap="word")
         text.pack(side="left", fill="both", expand=True)
+        bind_vertical_mousewheel(text)
         text.insert("1.0", "\n".join(sections))
         text.configure(state="disabled")
 
@@ -440,10 +455,22 @@ class MethodDiagnosticsDialog(tk.Toplevel):
         yscroll.pack(side="right", fill="y")
         text.configure(yscrollcommand=yscroll.set)
 
+        prepare_toplevel(self, master)
         self.grab_set()
 
 
-def format_method_info_text(info: dict[str, object], *, file_path: str) -> str:
+def format_method_info_text(
+    info: dict[str, object],
+    *,
+    file_path: str,
+    status_text: str = "-",
+    warnings: list[str] | None = None,
+    calibration_dataset_name: str | None = None,
+    calibration_runtime_s: float | None = None,
+    params_profile_path: str | None = None,
+    calibration_params: object = None,
+    calibration_report: str = "",
+) -> str:
     capabilities = [
         f"supports_calibrate={bool(info.get('supports_calibrate', False))}",
         f"supports_load_params={bool(info.get('supports_load_params', False))}",
@@ -458,5 +485,17 @@ def format_method_info_text(info: dict[str, object], *, file_path: str) -> str:
         "capabilities": capabilities,
         "input_schema": info.get("input_schema"),
         "output_schema": info.get("output_schema"),
+        "runtime": {
+            "status": status_text,
+            "warnings": list(warnings or []),
+            "calibration_dataset_name": calibration_dataset_name or "",
+            "calibration_runtime_s": calibration_runtime_s,
+            "params_profile_path": params_profile_path or "",
+            "has_calibration_params": calibration_params is not None,
+            "calibration_params": calibration_params,
+        },
     }
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    if calibration_report:
+        text = f"{text}\n\nCalibration report:\n{calibration_report}"
+    return text

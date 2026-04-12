@@ -10,6 +10,7 @@ from app.magnetometer_dataset import SampleRecord
 from app.method_card import MethodCard
 from app.source_card import SourceCard, resolve_source_card_status
 from app.styles import COLOR_GREEN, COLOR_RED, COLOR_YELLOW, PANEL_BG
+from app.tk_utils import bind_vertical_mousewheel, bind_vertical_mousewheel_tree
 
 PROJECTION_3D = "3D"
 PROJECTION_XY = "XY"
@@ -112,6 +113,7 @@ class MagnetometerTab(ttk.Frame):
         on_load_method_params: Callable[[str], None] | None = None,
         on_save_method_params: Callable[[str], None] | None = None,
         on_method_show_change: Callable[[str, bool], None] | None = None,
+        on_remove_method: Callable[[str], None] | None = None,
         on_enable_method_realtime: Callable[[str], None] | None = None,
         on_disable_method_realtime: Callable[[str], None] | None = None,
         on_method_record_change: Callable[[str, bool], None] | None = None,
@@ -140,6 +142,7 @@ class MagnetometerTab(ttk.Frame):
         self._on_load_method_params = on_load_method_params
         self._on_save_method_params = on_save_method_params
         self._on_method_show_change = on_method_show_change
+        self._on_remove_method = on_remove_method
         self._on_enable_method_realtime = on_enable_method_realtime
         self._on_disable_method_realtime = on_disable_method_realtime
         self._on_method_record_change = on_method_record_change
@@ -175,6 +178,8 @@ class MagnetometerTab(ttk.Frame):
         self._dataset_records: list[SampleRecord] = []
         self._dataset_records_by_stream: dict[str, list[SampleRecord]] = {}
         self._dataset_cloud_max_radius = 1.0
+        self._method_dataset_clouds: dict[str, list[SampleRecord]] = {}
+        self._method_dataset_cloud_max_radius = 1.0
         self._pending_dataset_rows: list[tuple[int, SampleRecord]] = []
         self._dataset_row_flush_after_id: str | None = None
         self._last_live_redraw_s = 0.0
@@ -219,6 +224,7 @@ class MagnetometerTab(ttk.Frame):
             height=self._top_panel_height,
         )
         self.cards_canvas.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.cards_canvas, target=self.cards_canvas)
 
         yscroll = ttk.Scrollbar(cards_host, orient="vertical", command=self.cards_canvas.yview)
         yscroll.grid(row=0, column=1, sticky="ns")
@@ -226,6 +232,7 @@ class MagnetometerTab(ttk.Frame):
 
         self.cards_frame = ttk.Frame(self.cards_canvas)
         self._cards_window = self.cards_canvas.create_window((0, 0), window=self.cards_frame, anchor="nw")
+        bind_vertical_mousewheel(self.cards_frame, target=self.cards_canvas)
         self.cards_frame.bind("<Configure>", self._on_cards_frame_configure)
         self.cards_canvas.bind("<Configure>", self._on_cards_canvas_configure)
 
@@ -301,6 +308,7 @@ class MagnetometerTab(ttk.Frame):
             height=self._top_panel_height,
         )
         self.control_canvas.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.control_canvas, target=self.control_canvas)
 
         yscroll = ttk.Scrollbar(scroll_host, orient="vertical", command=self.control_canvas.yview)
         yscroll.grid(row=0, column=1, sticky="ns")
@@ -308,6 +316,7 @@ class MagnetometerTab(ttk.Frame):
 
         self.control_frame = ttk.Frame(self.control_canvas)
         self._control_window = self.control_canvas.create_window((0, 0), window=self.control_frame, anchor="nw")
+        bind_vertical_mousewheel(self.control_frame, target=self.control_canvas)
         self.control_frame.bind("<Configure>", self._on_control_frame_configure)
         self.control_canvas.bind("<Configure>", self._on_control_canvas_configure)
 
@@ -316,6 +325,7 @@ class MagnetometerTab(ttk.Frame):
         self._build_dataset_actions_section(self.control_frame).grid(row=2, column=0, sticky="ew", pady=(8, 0))
         self._build_selected_method_section(self.control_frame).grid(row=3, column=0, sticky="ew", pady=(8, 0))
         self._build_output_routing_section(self.control_frame).grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        bind_vertical_mousewheel_tree(self.control_frame, target=self.control_canvas)
 
     def _build_bottom_notebook(self) -> None:
         self.bottom_nb = ttk.Notebook(self)
@@ -564,6 +574,7 @@ class MagnetometerTab(ttk.Frame):
 
         self.log_text = tk.Text(body, height=8, wrap="none")
         self.log_text.pack(side="left", fill="both", expand=True)
+        bind_vertical_mousewheel(self.log_text)
         self.log_text.tag_configure("tx", foreground="#001a66")
         self.log_text.configure(state="disabled")
 
@@ -597,6 +608,7 @@ class MagnetometerTab(ttk.Frame):
         tree = ttk.Treeview(frm, columns=columns, show="headings", height=8, selectmode="extended")
         self.data_tree = tree
         tree.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(tree)
         for column in columns:
             tree.heading(column, text=column)
             tree.column(column, width=110, stretch=True, anchor="w")
@@ -626,6 +638,7 @@ class MagnetometerTab(ttk.Frame):
         tree = ttk.Treeview(frm, columns=columns, show="headings", height=8)
         self.metrics_tree = tree
         tree.grid(row=1, column=0, sticky="nsew")
+        bind_vertical_mousewheel(tree)
         headings = {
             "metric": "metric",
             "value": "value",
@@ -661,6 +674,7 @@ class MagnetometerTab(ttk.Frame):
             on_record_change=self._handle_source_record_change,
         )
         card.pack(fill="x", pady=(0, 8))
+        bind_vertical_mousewheel_tree(card, target=self.cards_canvas)
         self._source_cards[source_id] = card
 
     def set_method_states(self, method_states: dict[str, dict[str, object]], selected_method_id: str | None) -> None:
@@ -670,12 +684,15 @@ class MagnetometerTab(ttk.Frame):
             self._method_cards[method_id].destroy()
             del self._method_cards[method_id]
             self._derived_streams.pop(method_id, None)
+            self._method_dataset_clouds.pop(method_id, None)
             self._method_record_vars.pop(method_id, None)
             check = self._method_record_checks.pop(method_id, None)
             if check is not None:
                 check.destroy()
             self._method_titles.pop(method_id, None)
             self._method_stream_ids.pop(method_id, None)
+        if stale_ids:
+            self._recompute_method_cloud_max_radius()
 
         for method_id, state in method_states.items():
             self._method_titles[method_id] = str(state.get("name", method_id))
@@ -706,9 +723,12 @@ class MagnetometerTab(ttk.Frame):
                     on_load_params=self._handle_method_load_params,
                     on_save_params=self._handle_method_save_params,
                     on_show_change=self._handle_method_show_change,
+                    on_record_change=self._handle_method_record_change,
                     on_toggle_realtime=self._handle_method_toggle_realtime,
+                    on_remove=self._handle_method_remove,
                 )
                 card.pack(fill="x", pady=(0, 8))
+                bind_vertical_mousewheel_tree(card, target=self.cards_canvas)
                 self._method_cards[method_id] = card
             card.set_status(
                 str(state.get("status", "partial")),
@@ -718,6 +738,8 @@ class MagnetometerTab(ttk.Frame):
             card.set_selected(method_id == selected_method_id)
             card.set_show(bool(state.get("show", False)))
             card.set_show_enabled(bool(state.get("show_enabled", False)))
+            card.set_record(bool(state.get("record", False)))
+            card.set_record_enabled(bool(state.get("can_record", False)))
             card.set_calibrate_enabled(bool(state.get("can_calibrate", False)))
             card.set_load_params_enabled(bool(state.get("can_load_params", False)))
             card.set_save_params_enabled(bool(state.get("can_save_params", False)))
@@ -729,6 +751,16 @@ class MagnetometerTab(ttk.Frame):
 
         self._rebuild_method_record_controls(method_states)
         self._update_heading_stream_summary()
+        self._redraw_view()
+
+    def set_method_dataset_clouds(self, method_clouds: dict[str, list[SampleRecord]]) -> None:
+        self._method_dataset_clouds = {
+            method_id: list(records)
+            for method_id, records in method_clouds.items()
+        }
+        self._recompute_method_cloud_max_radius()
+        if self.auto_fit_var.get():
+            self._sync_auto_fit_radius()
         self._redraw_view()
 
     def update_selected_method_details(self, *, name: str, version: str, path: str, status: str, capabilities: str) -> None:
@@ -807,6 +839,7 @@ class MagnetometerTab(ttk.Frame):
                 state="normal" if bool(state.get("can_record", False)) else "disabled",
             )
             check.grid(row=row, column=0, sticky="w", pady=1)
+            bind_vertical_mousewheel_tree(check, target=self.control_canvas)
             self._method_record_checks[method_id] = check
             row += 1
 
@@ -849,7 +882,7 @@ class MagnetometerTab(ttk.Frame):
         return (width * 0.5, height * 0.5)
 
     def _reference_radius(self) -> float:
-        radius = self._dataset_cloud_max_radius
+        radius = max(self._dataset_cloud_max_radius, self._method_dataset_cloud_max_radius)
         if self._current_mag_vector is not None and self._source_cards["raw_magnetometer"].show_var.get():
             mx, my, mz = self._current_mag_vector
             radius = max(radius, abs(mx), abs(my), abs(mz), math.sqrt(mx * mx + my * my + mz * mz))
@@ -923,17 +956,25 @@ class MagnetometerTab(ttk.Frame):
         self._view_pan = (0.0, 0.0)
         self._view_rotation_yaw_deg = DEFAULT_3D_YAW_DEG
         self._view_rotation_pitch_deg = DEFAULT_3D_PITCH_DEG
+        if self.auto_fit_var.get():
+            self._sync_auto_fit_radius()
+        else:
+            self._fit_radius = 1.0
         self._redraw_view()
 
     def _set_projection(self, projection: str) -> None:
         if projection == self._projection_mode:
             return
         self._projection_mode = projection
-        self._fit_radius = self._recommended_fit_radius(projection)
         self._view_scale = 1.0
         self._view_pan = (0.0, 0.0)
+        if self.auto_fit_var.get():
+            self._sync_auto_fit_radius(projection=projection)
         self._update_projection_buttons()
         self._redraw_view()
+
+    def _sync_auto_fit_radius(self, *, projection: str | None = None) -> None:
+        self._fit_radius = self._recommended_fit_radius(projection)
 
     def _update_projection_buttons(self) -> None:
         for projection, button in self._projection_buttons.items():
@@ -1076,6 +1117,8 @@ class MagnetometerTab(ttk.Frame):
                     continue
                 records = self._dataset_records_by_stream.get(stream_id, [])
                 if not records:
+                    records = self._method_dataset_clouds.get(method_id, [])
+                if not records:
                     continue
                 clouds.append({
                     "stream_id": stream_id,
@@ -1138,34 +1181,24 @@ class MagnetometerTab(ttk.Frame):
             })
         return visible
 
-    def _draw_heading_vector_xy(self, radius: float) -> None:
+    def _draw_heading_vector_xy(self, _radius: float) -> None:
         if (
             self._current_heading_deg is None
             or not self.view_option_vars["show raw heading"].get()
             or not self._source_cards["raw_heading"].show_var.get()
+            or self._current_mag_vector is None
         ):
             return
-        heading_rad = math.radians(self._current_heading_deg)
-        target = (
-            math.sin(heading_rad) * radius * 0.85,
-            math.cos(heading_rad) * radius * 0.85,
-        )
+        target = (self._current_mag_vector[0], self._current_mag_vector[1])
         vx0, vy0 = self._scene_to_view((0.0, 0.0))
         vx1, vy1 = self._scene_to_view(target)
         self.view_canvas.create_line(vx0, vy0, vx1, vy1, fill="#1f6aa5", width=3, arrow="last")
 
-    def _draw_derived_heading_vectors_xy(self, radius: float) -> None:
+    def _draw_derived_heading_vectors_xy(self, _radius: float) -> None:
         if not self.view_option_vars["show derived headings"].get():
             return
         for stream in self._iter_visible_derived_streams():
-            heading = stream.get("heading")
-            if not isinstance(heading, (int, float)) or not math.isfinite(float(heading)):
-                continue
-            heading_rad = math.radians(float(heading))
-            target = (
-                math.sin(heading_rad) * radius * 0.78,
-                math.cos(heading_rad) * radius * 0.78,
-            )
+            target = (float(stream["mx"]), float(stream["my"]))
             vx0, vy0 = self._scene_to_view((0.0, 0.0))
             vx1, vy1 = self._scene_to_view(target)
             self.view_canvas.create_line(vx0, vy0, vx1, vy1, fill=stream["color"], width=2, arrow="last")
@@ -1247,31 +1280,17 @@ class MagnetometerTab(ttk.Frame):
         self.view_canvas.create_text(z_top[0], z_top[1] - 10, text="+Z", fill="#000000")
         self.view_canvas.create_text(z_bottom[0], z_bottom[1] + 10, text="-Z", fill="#000000")
 
-        if self._current_heading_deg is not None and self.view_option_vars["show raw heading"].get():
-            heading_rad = math.radians(self._current_heading_deg)
-            heading_end = project_magnetometer_point(
-                PROJECTION_XY,
-                math.sin(heading_rad) * radius * 0.85,
-                math.cos(heading_rad) * radius * 0.85,
-                0.0,
-            )
+        if self._current_mag_vector is not None and self.view_option_vars["show raw heading"].get():
+            heading_end = (self._current_mag_vector[0], self._current_mag_vector[1])
             origin = self._scene_to_view((0.0, 0.0))
             vx1, vy1 = self._scene_to_view(self._project_scene_point(heading_end[0], heading_end[1], 0.0, projection=PROJECTION_3D))
             self.view_canvas.create_line(origin[0], origin[1], vx1, vy1, fill="#1f6aa5", width=3, arrow="last")
         if self.view_option_vars["show derived headings"].get():
             for stream in self._iter_visible_derived_streams():
-                heading = stream.get("heading")
-                if isinstance(heading, (int, float)) and math.isfinite(float(heading)):
-                    heading_rad = math.radians(float(heading))
-                    heading_end = project_magnetometer_point(
-                        PROJECTION_XY,
-                        math.sin(heading_rad) * radius * 0.78,
-                        math.cos(heading_rad) * radius * 0.78,
-                        0.0,
-                    )
-                    origin = self._scene_to_view((0.0, 0.0))
-                    vx1, vy1 = self._scene_to_view(self._project_scene_point(heading_end[0], heading_end[1], 0.0, projection=PROJECTION_3D))
-                    self.view_canvas.create_line(origin[0], origin[1], vx1, vy1, fill=stream["color"], width=2, arrow="last")
+                heading_end = (float(stream["mx"]), float(stream["my"]))
+                origin = self._scene_to_view((0.0, 0.0))
+                vx1, vy1 = self._scene_to_view(self._project_scene_point(heading_end[0], heading_end[1], 0.0, projection=PROJECTION_3D))
+                self.view_canvas.create_line(origin[0], origin[1], vx1, vy1, fill=stream["color"], width=2, arrow="last")
 
         if (
             self._current_mag_vector is not None
@@ -1351,6 +1370,8 @@ class MagnetometerTab(ttk.Frame):
     def _redraw_view(self, _event: tk.Event | None = None) -> None:
         canvas = self.view_canvas
         width, height = self._canvas_dimensions()
+        if self.auto_fit_var.get():
+            self._sync_auto_fit_radius()
         canvas.delete("all")
 
         pad = 24
@@ -1411,11 +1432,10 @@ class MagnetometerTab(ttk.Frame):
             for method_id, stream_state in (derived_streams or {}).items()
         }
         self._update_heading_stream_summary()
-        recommended_fit = self._recommended_fit_radius()
-        if first_sample:
-            self._fit_radius = recommended_fit
-        elif self.auto_fit_var.get() and recommended_fit > self._fit_radius:
-            self._fit_radius = recommended_fit
+        if first_sample and self.auto_fit_var.get():
+            self._sync_auto_fit_radius()
+        elif self.auto_fit_var.get():
+            self._sync_auto_fit_radius()
 
         now = time.monotonic()
         if first_sample or (now - self._last_live_redraw_s) >= LIVE_REDRAW_INTERVAL_S:
@@ -1515,6 +1535,13 @@ class MagnetometerTab(ttk.Frame):
         for record in self._dataset_records:
             radius = max(radius, self._record_radius(record))
         self._dataset_cloud_max_radius = radius
+
+    def _recompute_method_cloud_max_radius(self) -> None:
+        radius = 1.0
+        for records in self._method_dataset_clouds.values():
+            for record in records:
+                radius = max(radius, self._record_radius(record))
+        self._method_dataset_cloud_max_radius = radius
 
     def _set_dataset_record_cache(self, records: list[SampleRecord]) -> None:
         self._dataset_records = list(records)
@@ -1624,6 +1651,31 @@ class MagnetometerTab(ttk.Frame):
             )
         self.export_metrics_btn.configure(state="normal" if can_export else "disabled")
 
+    def get_view_state(self) -> dict[str, object]:
+        return {
+            "projection_mode": self._projection_mode,
+            "auto_fit": bool(self.auto_fit_var.get()),
+            "view_options": {
+                label: bool(var.get())
+                for label, var in self.view_option_vars.items()
+            },
+        }
+
+    def apply_view_state(self, state: dict[str, object]) -> None:
+        projection_mode = str(state.get("projection_mode", self._projection_mode))
+        if projection_mode in PROJECTION_MODES:
+            self._projection_mode = projection_mode
+        self.auto_fit_var.set(bool(state.get("auto_fit", self.auto_fit_var.get())))
+        view_options = state.get("view_options", {})
+        if isinstance(view_options, dict):
+            for label, var in self.view_option_vars.items():
+                if label in view_options:
+                    var.set(bool(view_options[label]))
+        self._update_projection_buttons()
+        if self.auto_fit_var.get():
+            self._sync_auto_fit_radius()
+        self._redraw_view()
+
     def _update_dataset_status(self) -> None:
         if self._recording_active:
             self.current_data_vars["dataset status"].set(f"Recording ({self._dataset_row_count})")
@@ -1683,6 +1735,10 @@ class MagnetometerTab(ttk.Frame):
     def _handle_method_show_change(self, method_id: str, enabled: bool) -> None:
         if self._on_method_show_change is not None:
             self._on_method_show_change(method_id, enabled)
+
+    def _handle_method_remove(self, method_id: str) -> None:
+        if self._on_remove_method is not None:
+            self._on_remove_method(method_id)
 
     def _handle_method_toggle_realtime(self, method_id: str) -> None:
         card = self._method_cards.get(method_id)
@@ -1770,7 +1826,10 @@ class MagnetometerTab(ttk.Frame):
 
     def _handle_auto_fit_toggle(self) -> None:
         if self.auto_fit_var.get():
-            self._fit_view()
+            self._sync_auto_fit_radius()
+            self._view_scale = 1.0
+            self._view_pan = (0.0, 0.0)
+        self._redraw_view()
 
     def _handle_bottom_tab_change(self, _event: tk.Event) -> None:
         if self._is_data_tab_visible():

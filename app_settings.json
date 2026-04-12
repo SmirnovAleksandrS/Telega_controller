@@ -63,16 +63,16 @@
       },
       {
         "anchor": [
-          222.49830877777902,
-          -235.0325141054946
+          234.33992115106076,
+          -234.5527199249339
         ],
         "handle_in": [
-          -16.199220135146334,
-          -1.3298066817957874
+          -19.576271186440664,
+          1.7796610169491487
         ],
         "handle_out": [
-          16.199220135146334,
-          1.3298066817957874
+          19.576271186440664,
+          -1.7796610169491487
         ]
       },
       {
@@ -90,13 +90,13 @@
         ]
       }
     ],
-    "scale": "10 m",
-    "map_path": "/home/necrosii/Документы/TiiT/VOY_Rover/Conf/map.png",
+    "scale": "50 cm",
+    "map_path": "",
     "map_scale_factor": 1.0,
     "map_rotation_deg": 42.0,
     "map_center": [
-      413.99314280849444,
-      126.08205076645999
+      210.0,
+      210.0
     ],
     "min_radius_cm": "50",
     "v_cm": "5",
@@ -109,10 +109,81 @@
     "right_linear": "1",
     "pose_source": "trolley",
     "autopilot_mode": "builtin_pure_pursuit",
-    "view_scale": 0.6904542428786239,
+    "view_scale": 1.1586575189467518,
     "view_pan": [
-      -167.1783321432304,
-      170.67940461049875
+      -22.013991382953357,
+      140.91320416677115
     ]
+  },
+  "magnetometer": {
+    "datasets": [
+      "/home/necrosii/Programming/Python/Telega_controller/НВЧ_кщмукМ1.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_360.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_v1_1point.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle2.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_vStab_509_circle.csv"
+    ],
+    "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_vStab_509_circle.csv",
+    "sources": {
+      "raw_magnetometer": {
+        "show": true,
+        "record": true
+      },
+      "raw_heading": {
+        "show": true,
+        "record": false
+      }
+    },
+    "selected_source_id": "raw_magnetometer",
+    "methods": [
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/simpleHardIroning.py",
+        "show": true,
+        "record": false,
+        "realtime_enabled": true,
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_vClear_circle_SHIM.json"
+      },
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/analyticGeometryTransform2D.py",
+        "show": false,
+        "record": false,
+        "realtime_enabled": true,
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_vClear_circle_AGT.json"
+      },
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/improvedAffineMethod.py",
+        "show": true,
+        "record": true,
+        "realtime_enabled": true,
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_vClear_circle_IAMM.json"
+      }
+    ],
+    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/improvedAffineMethod.py",
+    "primary_heading": {
+      "kind": "raw"
+    },
+    "view_state": {
+      "projection_mode": "3D",
+      "auto_fit": true,
+      "view_options": {
+        "show raw points": true,
+        "show corrected points": true,
+        "show current point": true,
+        "show raw heading": true,
+        "show GNSS heading": false,
+        "show derived headings": true,
+        "show trails": false,
+        "auto fit on load": true
+      }
+    },
+    "file_dialog_dirs": {
+      "dataset": "/home/necrosii/Programming/Python/Telega_controller",
+      "params": "/home/necrosii/Programming/Python/Telega_controller",
+      "plugin": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer",
+      "metrics": ""
+    }
   }
 }

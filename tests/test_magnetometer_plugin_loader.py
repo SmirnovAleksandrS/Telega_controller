@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import tempfile
 import textwrap
@@ -344,6 +345,208 @@ class MagnetometerPluginLoaderTests(unittest.TestCase):
         self.assertEqual(result.output["mag_x"], 2.0)
         self.assertEqual(result.output["mag_y"], 1.0)
         self.assertEqual(result.output["mag_z"], -3.0)
+
+    def test_external_analytic_geometry_method_calibrates_synthetic_ellipse(self) -> None:
+        plugin = load_method_plugin("externModules/magnetometer/analyticGeometryTransform2D.py")
+        self.assertEqual(plugin.status, "ready")
+
+        center_x = 12.0
+        center_y = -7.0
+        major_radius = 8.0
+        minor_radius = 4.0
+        beta_deg = 30.0
+        beta_rad = math.radians(beta_deg)
+
+        records: list[SampleRecord] = []
+        for idx in range(120):
+            angle = 2.0 * math.pi * idx / 120.0
+            x_axis = major_radius * math.cos(angle)
+            y_axis = minor_radius * math.sin(angle)
+            raw_x = center_x + math.cos(beta_rad) * x_axis - math.sin(beta_rad) * y_axis
+            raw_y = center_y + math.sin(beta_rad) * x_axis + math.cos(beta_rad) * y_axis
+            records.append(
+                SampleRecord(
+                    stream_id="raw_magnetometer",
+                    stream_type="raw",
+                    producer_name="Raw Magnetometer",
+                    producer_version="builtin",
+                    timestamp_mcu=1000 + idx,
+                    timestamp_pc_rx=2000 + idx,
+                    timestamp_pc_est=1500 + idx,
+                    mag_x=raw_x,
+                    mag_y=raw_y,
+                    mag_z=0.0,
+                    heading=None,
+                    flags="",
+                )
+            )
+
+        dataset = Dataset("synthetic_ellipse", records=records)
+        calibration = run_method_calibration(plugin, dataset)
+
+        self.assertTrue(calibration.ok)
+        assert calibration.params is not None
+        params = calibration.params["params"]
+        self.assertAlmostEqual(params["offset_x"], center_x, places=6)
+        self.assertAlmostEqual(params["offset_y"], center_y, places=6)
+        self.assertAlmostEqual(params["x_scale"], 1.0, places=6)
+        self.assertAlmostEqual(params["y_scale"], major_radius / minor_radius, places=6)
+
+        corrected_radii: list[float] = []
+        for record in records[:12]:
+            result = run_method_process(
+                plugin,
+                {
+                    "timestamp_mcu": record.timestamp_mcu,
+                    "timestamp_pc_rx": record.timestamp_pc_rx,
+                    "timestamp_pc_est": record.timestamp_pc_est,
+                    "mag_x": record.mag_x,
+                    "mag_y": record.mag_y,
+                    "mag_z": record.mag_z,
+                    "heading": record.heading,
+                    "flags": record.flags,
+                },
+                calibration.params,
+            )
+            self.assertTrue(result.ok)
+            assert result.output is not None
+            corrected_radii.append(math.hypot(result.output["mag_x"], result.output["mag_y"]))
+
+        for radius in corrected_radii:
+            self.assertAlmostEqual(radius, major_radius, places=5)
+
+    def test_external_improved_affine_method_calibrates_tilted_near_circular_ellipse(self) -> None:
+        plugin = load_method_plugin("externModules/magnetometer/improvedAffineMethod.py")
+        self.assertEqual(plugin.status, "ready")
+        self.assertEqual(plugin.version, "1.3.0")
+
+        center = (5.0, -3.0, 2.5)
+        normal = (0.35, -0.45, 0.82)
+        normal_len = math.sqrt(sum(value * value for value in normal))
+        normal = tuple(value / normal_len for value in normal)
+        ref = (1.0, 0.0, 0.0) if abs(normal[0]) < 0.9 else (0.0, 1.0, 0.0)
+        axis_u = (
+            normal[1] * ref[2] - normal[2] * ref[1],
+            normal[2] * ref[0] - normal[0] * ref[2],
+            normal[0] * ref[1] - normal[1] * ref[0],
+        )
+        axis_u_len = math.sqrt(sum(value * value for value in axis_u))
+        axis_u = tuple(value / axis_u_len for value in axis_u)
+        axis_v = (
+            normal[1] * axis_u[2] - normal[2] * axis_u[1],
+            normal[2] * axis_u[0] - normal[0] * axis_u[2],
+            normal[0] * axis_u[1] - normal[1] * axis_u[0],
+        )
+
+        major_radius = 8.0
+        minor_radius = 7.4
+        theta = math.radians(37.0)
+
+        records: list[SampleRecord] = []
+        for idx in range(180):
+            angle = 2.0 * math.pi * idx / 180.0
+            ellipse_major = major_radius * math.cos(angle)
+            ellipse_minor = minor_radius * math.sin(angle)
+            plane_u = math.cos(theta) * ellipse_major - math.sin(theta) * ellipse_minor
+            plane_v = math.sin(theta) * ellipse_major + math.cos(theta) * ellipse_minor
+            point = (
+                center[0] + axis_u[0] * plane_u + axis_v[0] * plane_v,
+                center[1] + axis_u[1] * plane_u + axis_v[1] * plane_v,
+                center[2] + axis_u[2] * plane_u + axis_v[2] * plane_v,
+            )
+            records.append(
+                SampleRecord(
+                    stream_id="raw_magnetometer",
+                    stream_type="raw",
+                    producer_name="Raw Magnetometer",
+                    producer_version="builtin",
+                    timestamp_mcu=2000 + idx,
+                    timestamp_pc_rx=3000 + idx,
+                    timestamp_pc_est=2500 + idx,
+                    mag_x=point[0],
+                    mag_y=point[1],
+                    mag_z=point[2],
+                    heading=None,
+                    flags="",
+                )
+            )
+
+        dataset = Dataset("tilted_ellipse", records=records)
+        calibration = run_method_calibration(plugin, dataset)
+
+        self.assertTrue(calibration.ok)
+        assert calibration.params is not None
+        self.assertIn("Raw major axis:", calibration.report)
+        self.assertIn("Raw minor axis:", calibration.report)
+        self.assertIn("Raw axis delta:", calibration.report)
+        self.assertIn("Corrected major axis:", calibration.report)
+        self.assertIn("Corrected minor axis:", calibration.report)
+        self.assertIn("Corrected axis delta:", calibration.report)
+        self.assertIn("Used angular sectors:", calibration.report)
+        self.assertIn("Phase weighting: elliptic phase atan2(y'/b, x'/a)", calibration.report)
+        self.assertIn("Stage projected_centered:", calibration.report)
+        self.assertIn("Stage rotated_axes:", calibration.report)
+        self.assertIn("Stage scaled_circle:", calibration.report)
+        self.assertIn("Stage horizontal_xy:", calibration.report)
+        self.assertIn("fit_center_x=", calibration.report)
+        self.assertIn("robust_radius_span=", calibration.report)
+        self.assertIn("robust_radius_mad=", calibration.report)
+
+        report_values: dict[str, float] = {}
+        for line in calibration.report.splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            try:
+                report_values[key.strip()] = float(value.strip())
+            except ValueError:
+                continue
+
+        params = calibration.params["params"]
+        self.assertAlmostEqual(params["offset_x"], center[0], places=5)
+        self.assertAlmostEqual(params["offset_y"], center[1], places=5)
+        self.assertAlmostEqual(params["offset_z"], center[2], places=5)
+        self.assertAlmostEqual(params["major_radius"], major_radius, places=5)
+        self.assertAlmostEqual(params["minor_radius"], minor_radius, places=5)
+        self.assertAlmostEqual(params["axis_ratio"], major_radius / minor_radius, places=5)
+        self.assertGreater(report_values["Used angular sectors"], 0.0)
+        self.assertLess(report_values["Corrected axis delta"], report_values["Raw axis delta"])
+
+        corrected_norms: list[float] = []
+        corrected_xy_radii: list[float] = []
+        corrected_z_values: list[float] = []
+        for record in records[:24]:
+            result = run_method_process(
+                plugin,
+                {
+                    "timestamp_mcu": record.timestamp_mcu,
+                    "timestamp_pc_rx": record.timestamp_pc_rx,
+                    "timestamp_pc_est": record.timestamp_pc_est,
+                    "mag_x": record.mag_x,
+                    "mag_y": record.mag_y,
+                    "mag_z": record.mag_z,
+                    "heading": record.heading,
+                    "flags": record.flags,
+                },
+                calibration.params,
+            )
+            self.assertTrue(result.ok)
+            assert result.output is not None
+            corrected_xy_radii.append(math.hypot(result.output["mag_x"], result.output["mag_y"]))
+            corrected_z_values.append(abs(result.output["mag_z"]))
+            corrected_norms.append(
+                math.sqrt(
+                    result.output["mag_x"] * result.output["mag_x"]
+                    + result.output["mag_y"] * result.output["mag_y"]
+                    + result.output["mag_z"] * result.output["mag_z"]
+                )
+            )
+
+        for radius in corrected_norms:
+            self.assertAlmostEqual(radius, major_radius, places=4)
+        for radius in corrected_xy_radii:
+            self.assertAlmostEqual(radius, major_radius, places=4)
+        self.assertLess(max(corrected_z_values), 1e-5)
 
 
 if __name__ == "__main__":
