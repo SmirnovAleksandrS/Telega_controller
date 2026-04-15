@@ -7,13 +7,17 @@ from comm.protocol import (
     TYPE_D1_TACHO,
     TYPE_D2_MOTOR,
     TYPE_D3_SENSOR_TENSOR,
+    TYPE_F1_PID_RESP,
     Frame,
+    MotorPidData,
     MotorData,
     SensorTensorData,
     StreamParser,
     TachoData,
     build_frame,
     build_control,
+    build_pid_req,
+    build_set_motor_pid,
     parse_frame,
 )
 from utils.crc32 import crc32_ieee
@@ -74,6 +78,42 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(parsed.angular_velocity, (4.0, 5.0, 6.0))
         self.assertEqual(parsed.linear_quality, (7.0, 8.0, 9.0))
         self.assertEqual(parsed.angular_quality, (10.0, 11.0, 12.0))
+
+    def test_motor_pid_response_parses_f1_payload(self) -> None:
+        payload = struct.pack("<6f", 1.0, 0.1, 0.01, 2.0, 0.2, 0.02)
+
+        parsed = parse_frame(Frame(msg_type=TYPE_F1_PID_RESP, payload=payload))
+
+        self.assertIsInstance(parsed, MotorPidData)
+        assert isinstance(parsed, MotorPidData)
+        self.assertAlmostEqual(parsed.left_p, 1.0)
+        self.assertAlmostEqual(parsed.left_i, 0.1)
+        self.assertAlmostEqual(parsed.left_d, 0.01)
+        self.assertAlmostEqual(parsed.right_p, 2.0)
+        self.assertAlmostEqual(parsed.right_i, 0.2)
+        self.assertAlmostEqual(parsed.right_d, 0.02)
+
+    def test_build_pid_request_uses_b1_type_and_sync_like_payload(self) -> None:
+        packet = build_pid_req(7, 123456)
+
+        self.assertEqual(packet[1], 0xB1)
+        self.assertEqual(packet[2], 6)
+        seq, t1 = struct.unpack_from("<HI", packet, 3)
+        self.assertEqual(seq, 7)
+        self.assertEqual(t1, 123456)
+
+    def test_build_set_motor_pid_packs_six_float_coefficients(self) -> None:
+        packet = build_set_motor_pid(1.0, 0.1, 0.01, 2.0, 0.2, 0.02)
+
+        self.assertEqual(packet[1], 0xA2)
+        self.assertEqual(packet[2], 24)
+        values = struct.unpack_from("<6f", packet, 3)
+        self.assertAlmostEqual(values[0], 1.0)
+        self.assertAlmostEqual(values[1], 0.1)
+        self.assertAlmostEqual(values[2], 0.01)
+        self.assertAlmostEqual(values[3], 2.0)
+        self.assertAlmostEqual(values[4], 0.2)
+        self.assertAlmostEqual(values[5], 0.02)
 
 
 if __name__ == "__main__":

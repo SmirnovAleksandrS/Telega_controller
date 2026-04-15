@@ -12,9 +12,9 @@
     "temp_delta": 20.0
   },
   "geometry": {
-    "a1_cm": 20.0,
-    "a2_cm": 20.0,
-    "drive_wheel_diameter_cm": 6.0
+    "a1_cm": 6.0,
+    "a2_cm": 6.0,
+    "drive_wheel_diameter_cm": 20.0
   },
   "speed_map": {
     "pwm_1": 2000.0,
@@ -49,44 +49,30 @@
       },
       {
         "anchor": [
-          203.60293233403206,
-          -213.869692488498
+          302.1331824620309,
+          71.12114853122995
         ],
         "handle_in": [
-          -0.0,
-          21.918636674746494
+          -43.22389843098733,
+          8.17749429775435
         ],
         "handle_out": [
-          0.0,
-          -21.918636674746494
+          43.22389843098733,
+          -8.17749429775435
         ]
       },
       {
         "anchor": [
-          234.33992115106076,
-          -234.5527199249339
+          435.30951816831623,
+          184.43785522868328
         ],
         "handle_in": [
-          -19.576271186440664,
-          1.7796610169491487
+          -5.841067355538826,
+          -51.40139272874171
         ],
         "handle_out": [
-          19.576271186440664,
-          -1.7796610169491487
-        ]
-      },
-      {
-        "anchor": [
-          590.5802419019701,
-          -247.12555502949266
-        ],
-        "handle_in": [
-          -58.63538349550868,
-          3.4252326260999553
-        ],
-        "handle_out": [
-          59.97553999277485,
-          1.713068175836708
+          56.24139086796322,
+          20.902295405935305
         ]
       }
     ],
@@ -109,24 +95,17 @@
     "right_linear": "1",
     "pose_source": "trolley",
     "autopilot_mode": "builtin_pure_pursuit",
-    "view_scale": 1.1586575189467518,
+    "view_scale": 1.4019755979255726,
     "view_pan": [
-      -22.013991382953357,
-      140.91320416677115
+      56.402839056007096,
+      89.89348178890518
     ]
   },
   "magnetometer": {
     "datasets": [
-      "/home/necrosii/Programming/Python/Telega_controller/НВЧ_кщмукМ1.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_360.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_v1_1point.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle2.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_V1_circle.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_vStab_509_circle.csv"
+      "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_vStab_Chel_circle_RobotDriven.csv"
     ],
-    "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_vStab_509_circle.csv",
+    "active_dataset_path": "",
     "sources": {
       "raw_magnetometer": {
         "show": true,
@@ -143,31 +122,43 @@
         "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/simpleHardIroning.py",
         "show": true,
         "record": false,
-        "realtime_enabled": true,
-        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_vClear_circle_SHIM.json"
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
       },
       {
         "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/analyticGeometryTransform2D.py",
-        "show": false,
+        "show": true,
         "record": false,
-        "realtime_enabled": true,
-        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_vClear_circle_AGT.json"
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
       },
       {
         "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/improvedAffineMethod.py",
         "show": true,
-        "record": true,
-        "realtime_enabled": true,
-        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_rover_vClear_circle_IAMM.json"
+        "record": false,
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
       }
     ],
-    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/improvedAffineMethod.py",
+    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/simpleHardIroning.py",
     "primary_heading": {
       "kind": "raw"
     },
     "view_state": {
-      "projection_mode": "3D",
-      "auto_fit": true,
+      "projection_mode": "XY",
+      "auto_fit": false,
       "view_options": {
         "show raw points": true,
         "show corrected points": true,
@@ -183,6 +174,103 @@
       "dataset": "/home/necrosii/Programming/Python/Telega_controller",
       "params": "/home/necrosii/Programming/Python/Telega_controller",
       "plugin": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer",
+      "metrics": ""
+    }
+  },
+  "accelerometer": {
+    "datasets": [],
+    "active_dataset_path": "",
+    "sources": {
+      "raw_accelerometer": {
+        "show": true,
+        "record": true
+      },
+      "raw_tilt": {
+        "show": true,
+        "record": false
+      }
+    },
+    "selected_source_id": "raw_accelerometer",
+    "methods": [
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/accelerometer/procedure3QuasiStaticMethod.py",
+        "show": false,
+        "record": false,
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
+      }
+    ],
+    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/accelerometer/procedure3QuasiStaticMethod.py",
+    "primary_output": {
+      "kind": "raw"
+    },
+    "view_state": {
+      "projection_mode": "3D",
+      "auto_fit": true,
+      "view_options": {
+        "show raw points": true,
+        "show corrected points": true,
+        "show current point": true,
+        "show sensor frame": true,
+        "show derived frames": true,
+        "show gravity vector": true,
+        "auto fit on load": true
+      }
+    },
+    "file_dialog_dirs": {
+      "dataset": "",
+      "params": "",
+      "plugin": "/home/necrosii/Programming/Python/Telega_controller/externModules/accelerometer",
+      "metrics": ""
+    }
+  },
+  "gyroscope": {
+    "datasets": [],
+    "active_dataset_path": "",
+    "sources": {
+      "raw_gyroscope": {
+        "show": true,
+        "record": true
+      }
+    },
+    "selected_source_id": "raw_gyroscope",
+    "methods": [
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/gyroscope/procedure3QuasiStaticMethod.py",
+        "show": false,
+        "record": false,
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
+      }
+    ],
+    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/gyroscope/procedure3QuasiStaticMethod.py",
+    "primary_output": {
+      "kind": "raw"
+    },
+    "view_state": {
+      "time_window_s": 3.0,
+      "auto_fit": true,
+      "view_options": {
+        "show gx": true,
+        "show gy": true,
+        "show gz": true,
+        "show |ω|": true,
+        "show derived traces": true,
+        "auto fit on load": true
+      }
+    },
+    "file_dialog_dirs": {
+      "dataset": "",
+      "params": "",
+      "plugin": "/home/necrosii/Programming/Python/Telega_controller/externModules/gyroscope",
       "metrics": ""
     }
   }

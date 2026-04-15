@@ -36,11 +36,17 @@ class ManualTab(ttk.Frame):
         on_control: Callable[[int, int], None],
         on_coeffs_change: Callable[[float, float, float, float], None] | None = None,
         on_command_quantum_change: Callable[[int], None] | None = None,
+        on_pid_change: Callable[[tuple[float, float, float, float, float, float]], None] | None = None,
+        on_pid_send: Callable[[tuple[float, float, float, float, float, float]], None] | None = None,
+        on_pid_read: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(master)
         self.on_control = on_control
         self.on_coeffs_change = on_coeffs_change
         self.on_command_quantum_change = on_command_quantum_change
+        self.on_pid_change = on_pid_change
+        self.on_pid_send = on_pid_send
+        self.on_pid_read = on_pid_read
         self.state = ManualControlState()
 
         self._neutral = 1500
@@ -58,6 +64,9 @@ class ManualTab(ttk.Frame):
         self._filter_desc: dict[str, str] = {}
         self._menu_tooltip: _MenuTooltip | None = None
         self._suspend_command_quantum_notify = False
+        self._suspend_pid_notify = False
+        self._pid_send_after_id: str | None = None
+        self._pid_autosend_delay_ms = 600
         self._track_circumference_m = math.pi * 0.10
         self._speed_map_points = [
             SpeedMapPoint(1000.0, -1.0),
@@ -128,17 +137,56 @@ class ManualTab(ttk.Frame):
         ttk.Entry(self, textvariable=self.command_quantum_var, width=8).grid(row=2, column=2, sticky="w", padx=(6, 8), pady=(10, 0))
         ttk.Label(self, text="ms").grid(row=2, column=3, sticky="w", pady=(10, 0))
 
+        pid_frame = ttk.LabelFrame(self, text="Motor PID", padding=8)
+        pid_frame.grid(row=3, column=1, columnspan=6, sticky="ew", pady=(12, 0))
+        for col in range(7):
+            pid_frame.columnconfigure(col, weight=0)
+        pid_frame.columnconfigure(6, weight=1)
+
+        ttk.Label(pid_frame, text="").grid(row=0, column=0, sticky="w")
+        ttk.Label(pid_frame, text="P").grid(row=0, column=1, sticky="w", padx=(0, 6))
+        ttk.Label(pid_frame, text="I").grid(row=0, column=2, sticky="w", padx=(0, 6))
+        ttk.Label(pid_frame, text="D").grid(row=0, column=3, sticky="w")
+
+        ttk.Label(pid_frame, text="Left").grid(row=1, column=0, sticky="w")
+        self.pid_left_p_var = tk.StringVar(value="0")
+        self.pid_left_i_var = tk.StringVar(value="0")
+        self.pid_left_d_var = tk.StringVar(value="0")
+        ttk.Entry(pid_frame, textvariable=self.pid_left_p_var, width=10).grid(row=1, column=1, sticky="w", padx=(0, 6), pady=(4, 0))
+        ttk.Entry(pid_frame, textvariable=self.pid_left_i_var, width=10).grid(row=1, column=2, sticky="w", padx=(0, 6), pady=(4, 0))
+        ttk.Entry(pid_frame, textvariable=self.pid_left_d_var, width=10).grid(row=1, column=3, sticky="w", pady=(4, 0))
+
+        ttk.Label(pid_frame, text="Right").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.pid_right_p_var = tk.StringVar(value="0")
+        self.pid_right_i_var = tk.StringVar(value="0")
+        self.pid_right_d_var = tk.StringVar(value="0")
+        ttk.Entry(pid_frame, textvariable=self.pid_right_p_var, width=10).grid(row=2, column=1, sticky="w", padx=(0, 6), pady=(6, 0))
+        ttk.Entry(pid_frame, textvariable=self.pid_right_i_var, width=10).grid(row=2, column=2, sticky="w", padx=(0, 6), pady=(6, 0))
+        ttk.Entry(pid_frame, textvariable=self.pid_right_d_var, width=10).grid(row=2, column=3, sticky="w", pady=(6, 0))
+
+        ttk.Button(pid_frame, text="Send PID", command=self._on_send_pid).grid(row=3, column=1, columnspan=2, sticky="ew", pady=(10, 0), padx=(0, 6))
+        ttk.Button(pid_frame, text="Read PID", command=self._on_read_pid).grid(row=3, column=3, columnspan=2, sticky="ew", pady=(10, 0))
+
         # Update coeffs on typing
         for var in [self.left_shift_var, self.right_shift_var, self.left_linear_var, self.right_linear_var]:
             var.trace_add("write", lambda *_: self._read_coeffs())
         self.command_quantum_var.trace_add("write", lambda *_: self._read_command_quantum())
+        for var in [
+            self.pid_left_p_var,
+            self.pid_left_i_var,
+            self.pid_left_d_var,
+            self.pid_right_p_var,
+            self.pid_right_i_var,
+            self.pid_right_d_var,
+        ]:
+            var.trace_add("write", lambda *_: self._schedule_pid_submit())
 
         # Stretch
         self.columnconfigure(0, weight=1)
         for c in range(1, 7):
             self.columnconfigure(c, weight=0)
-        self.rowconfigure(3, weight=1)
-        self.rowconfigure(4, weight=0)
+        self.rowconfigure(3, weight=0)
+        self.rowconfigure(4, weight=1)
 
         # Bottom notebook (Log / RPM)
         self.bottom_nb = ttk.Notebook(self)
@@ -193,6 +241,82 @@ class ManualTab(ttk.Frame):
                 self.command_quantum_var.set(str(value))
             finally:
                 self._suspend_command_quantum_notify = False
+
+    def _schedule_pid_submit(self) -> None:
+        if self._suspend_pid_notify:
+            return
+        if self._pid_send_after_id is not None:
+            try:
+                self.after_cancel(self._pid_send_after_id)
+            except Exception:
+                pass
+        self._pid_send_after_id = self.after(self._pid_autosend_delay_ms, self._emit_pid_submit)
+
+    def _emit_pid_submit(self) -> None:
+        self._pid_send_after_id = None
+        values = self.get_motor_pid_values()
+        if values is None:
+            return
+        if self.on_pid_change:
+            self.on_pid_change(values)
+
+    def _on_send_pid(self) -> None:
+        if self._pid_send_after_id is not None:
+            try:
+                self.after_cancel(self._pid_send_after_id)
+            except Exception:
+                pass
+            self._pid_send_after_id = None
+        values = self.get_motor_pid_values()
+        if values is None:
+            return
+        if self.on_pid_send:
+            self.on_pid_send(values)
+        elif self.on_pid_change:
+            self.on_pid_change(values)
+
+    def _on_read_pid(self) -> None:
+        if self.on_pid_read:
+            self.on_pid_read()
+
+    def get_motor_pid_values(self) -> tuple[float, float, float, float, float, float] | None:
+        try:
+            return (
+                float(self.pid_left_p_var.get().strip()),
+                float(self.pid_left_i_var.get().strip()),
+                float(self.pid_left_d_var.get().strip()),
+                float(self.pid_right_p_var.get().strip()),
+                float(self.pid_right_i_var.get().strip()),
+                float(self.pid_right_d_var.get().strip()),
+            )
+        except ValueError:
+            return None
+
+    def set_motor_pid_values(
+        self,
+        left_p: float,
+        left_i: float,
+        left_d: float,
+        right_p: float,
+        right_i: float,
+        right_d: float,
+    ) -> None:
+        if self._pid_send_after_id is not None:
+            try:
+                self.after_cancel(self._pid_send_after_id)
+            except Exception:
+                pass
+            self._pid_send_after_id = None
+        self._suspend_pid_notify = True
+        try:
+            self.pid_left_p_var.set(f"{float(left_p):.6g}")
+            self.pid_left_i_var.set(f"{float(left_i):.6g}")
+            self.pid_left_d_var.set(f"{float(left_d):.6g}")
+            self.pid_right_p_var.set(f"{float(right_p):.6g}")
+            self.pid_right_i_var.set(f"{float(right_i):.6g}")
+            self.pid_right_d_var.set(f"{float(right_d):.6g}")
+        finally:
+            self._suspend_pid_notify = False
 
     def _on_press(self, e: tk.Event) -> None:
         self._dragging = True
@@ -338,8 +462,8 @@ class ManualTab(ttk.Frame):
             sub.bind("<<MenuSelect>>", self._on_filter_menu_select)
             sub.bind("<Unmap>", self._on_filter_menu_unmap)
 
-        add_group("A: Admin", [("A0", "A0 - disable D messages"), ("A1", "A1 - enable D messages")])
-        add_group("B: Requests", [("B0", "B0 - sync request")])
+        add_group("A: Admin", [("A0", "A0 - disable D messages"), ("A1", "A1 - enable D messages"), ("A2", "A2 - set motor PID")])
+        add_group("B: Requests", [("B0", "B0 - sync request"), ("B1", "B1 - read motor PID request")])
         add_group("C: Control", [("C0", "C0 - control command")])
         add_group("D: Data", [
             ("D0", "D0 - IMU data"),
@@ -348,7 +472,7 @@ class ManualTab(ttk.Frame):
             ("D3", "D3 - sensor tensor data"),
         ])
         add_group("E: Errors", [("E0", "E0 - error code")])
-        add_group("F: Responses", [("F0", "F0 - sync response")])
+        add_group("F: Responses", [("F0", "F0 - sync response"), ("F1", "F1 - motor PID response")])
         add_group("Other", [
             ("unknown", "unknown - unparsed frame"),
         ])

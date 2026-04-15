@@ -63,6 +63,108 @@ class MagnetometerPluginLoaderTests(unittest.TestCase):
             self.assertIsNotNone(plugin.module)
             self.assertIsNone(plugin.diagnostics)
 
+    def test_plugin_loads_optional_stream_requirements(self) -> None:
+        plugin_code = textwrap.dedent(
+            """
+            def get_info():
+                return {
+                    "name": "Stream Aware Plugin",
+                    "version": "1.0.0",
+                    "type": "method",
+                    "supports_calibrate": True,
+                    "supports_load_params": True,
+                    "supports_save_params": True,
+                    "supports_process": True,
+                    "input_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                    "output_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float", "heading": "float"},
+                    "stream_requirements": {
+                        "calibrate": [
+                            {
+                                "slot": "mag_input",
+                                "kind": "imu.magnetometer_vector",
+                                "required": True,
+                                "label": "Magnetometer input",
+                                "description": "Corrected vector used during calibration"
+                            }
+                        ],
+                        "process": [
+                            {
+                                "slot": "mag_input",
+                                "kind": "imu.magnetometer_vector",
+                                "required": True
+                            }
+                        ]
+                    },
+                }
+
+            def calibrate(dataset, config=None):
+                return {"algorithm_name": "Stream Aware Plugin", "algorithm_version": "1.0.0", "schema_version": "1", "created_at": "2026-04-12T12:00:00Z", "params": {}}
+
+            def load_params(path):
+                return {}
+
+            def save_params(path, params):
+                return None
+
+            def process(sample, params):
+                return sample
+            """
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "stream_aware.py")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(plugin_code)
+
+            plugin = load_method_plugin(path)
+
+            self.assertEqual(plugin.status, "ready")
+            self.assertEqual(plugin.stream_requirements["calibrate"][0].slot, "mag_input")
+            self.assertEqual(plugin.stream_requirements["calibrate"][0].kind, "imu.magnetometer_vector")
+            self.assertEqual(plugin.stream_requirements["process"][0].scope, "process")
+
+    def test_invalid_stream_requirements_reject_plugin(self) -> None:
+        plugin_code = textwrap.dedent(
+            """
+            def get_info():
+                return {
+                    "name": "Broken Stream Plugin",
+                    "version": "1.0.0",
+                    "type": "method",
+                    "supports_calibrate": True,
+                    "supports_load_params": True,
+                    "supports_save_params": True,
+                    "supports_process": True,
+                    "input_schema": {"mag_x": "float"},
+                    "output_schema": {"mag_x": "float"},
+                    "stream_requirements": {
+                        "calibrate": [{"slot": "x", "kind": "unknown.kind"}]
+                    },
+                }
+
+            def calibrate(dataset, config=None):
+                return {}
+
+            def load_params(path):
+                return {}
+
+            def save_params(path, params):
+                return None
+
+            def process(sample, params):
+                return sample
+            """
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "broken_stream.py")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(plugin_code)
+
+            plugin = load_method_plugin(path)
+
+            self.assertEqual(plugin.status, "error")
+            assert plugin.diagnostics is not None
+            self.assertEqual(plugin.diagnostics.last_action, "validate_stream_requirements")
+
     def test_run_method_calibration_returns_warning_for_missing_header(self) -> None:
         plugin_code = textwrap.dedent(
             """
@@ -122,6 +224,66 @@ class MagnetometerPluginLoaderTests(unittest.TestCase):
             self.assertTrue(result.ok)
             self.assertIsNone(result.diagnostics)
             self.assertTrue(any("missing header keys" in warning for warning in result.warnings))
+
+    def test_run_method_calibration_passes_stream_config(self) -> None:
+        plugin_code = textwrap.dedent(
+            """
+            def get_info():
+                return {
+                    "name": "Config Echo Plugin",
+                    "version": "1.0.0",
+                    "type": "method",
+                    "supports_calibrate": True,
+                    "supports_load_params": True,
+                    "supports_save_params": True,
+                    "supports_process": True,
+                    "input_schema": {"mag_x": "float"},
+                    "output_schema": {"heading": "float"},
+                }
+
+            def calibrate(dataset, config=None):
+                return {
+                    "algorithm_name": "Config Echo Plugin",
+                    "algorithm_version": "1.0.0",
+                    "schema_version": "1",
+                    "created_at": "2026-04-12T12:00:00Z",
+                    "params": {
+                        "stream_bindings": dict(config.get("stream_bindings", {})),
+                        "stream_input_slots": sorted(config.get("stream_inputs", {}).keys()),
+                    },
+                }
+
+            def load_params(path):
+                return {}
+
+            def save_params(path, params):
+                return None
+
+            def process(sample, params):
+                return sample
+            """
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "config_echo.py")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(plugin_code)
+
+            plugin = load_method_plugin(path)
+            dataset = Dataset("session")
+
+            result = run_method_calibration(
+                plugin,
+                dataset,
+                config={
+                    "stream_bindings": {"mag_input": "builtin::raw_magnetometer"},
+                    "stream_inputs": {"mag_input": {"records": []}},
+                },
+            )
+
+            self.assertTrue(result.ok)
+            assert result.params is not None
+            self.assertEqual(result.params["params"]["stream_bindings"]["mag_input"], "builtin::raw_magnetometer")
+            self.assertEqual(result.params["params"]["stream_input_slots"], ["mag_input"])
 
     def test_run_method_calibration_captures_runtime_exception(self) -> None:
         plugin_code = textwrap.dedent(

@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
 
+from app.calibration_streams import RoutingValidationResult, infer_stream_requirements
+
 REQUIRED_FUNCTIONS = ("get_info", "calibrate", "load_params", "save_params", "process")
 CALIBRATION_HEADER_KEYS = ("algorithm_name", "algorithm_version", "schema_version", "created_at")
 REQUIRED_INFO_KEYS = (
@@ -73,12 +75,18 @@ class LoadedMethodPlugin:
     record_enabled: bool = False
     derived_stream_id: str | None = None
     last_output: dict[str, Any] | None = None
+    stream_requirements: dict[str, list[Any]] = field(default_factory=dict)
+    stream_bindings: dict[str, dict[str, str]] = field(default_factory=dict)
+    routing_validation: dict[str, RoutingValidationResult] = field(default_factory=dict)
+    routing_warnings: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.load_status:
             self.load_status = self.status
         if not self.load_warnings:
             self.load_warnings = list(self.warnings)
+        if not self.stream_bindings:
+            self.stream_bindings = {"calibrate": {}, "process": {}}
 
     def capabilities_label(self) -> str:
         parts: list[str] = []
@@ -98,9 +106,15 @@ class LoadedMethodPlugin:
 
     def effective_warnings(self) -> list[str]:
         warnings = list(self.load_warnings)
+        warnings.extend(self.routing_warnings)
         warnings.extend(self.calibration_warnings)
         warnings.extend(self.params_warnings)
         warnings.extend(self.process_warnings)
+        persisted = self.calibration_params
+        if isinstance(persisted, dict):
+            persisted_warnings = persisted.get("warnings", [])
+            if isinstance(persisted_warnings, (list, tuple, set)):
+                warnings.extend(str(item).strip() for item in persisted_warnings if str(item).strip())
         if self.supports_calibrate() and self.calibration_params is None and self.status != "error":
             warnings.append("calibration not completed")
         deduped: list[str] = []
@@ -166,6 +180,19 @@ class LoadedMethodPlugin:
 
     def can_toggle_record(self) -> bool:
         return self.module is not None and self.supports_process() and self.realtime_enabled
+
+    def can_clear_params(self) -> bool:
+        return (
+            self.module is not None
+            and not self.is_calibrating
+            and (
+                self.calibration_params is not None
+                or bool(self.params_profile_path)
+                or bool(self.calibration_report)
+                or self.realtime_enabled
+                or self.record_enabled
+            )
+        )
 
 
 @dataclass
@@ -289,6 +316,16 @@ def load_method_plugin(path: str) -> LoadedMethodPlugin:
         if not info.get(key):
             warnings.append(f"{key} is disabled")
 
+    try:
+        stream_requirements = infer_stream_requirements(info)
+    except Exception as exc:
+        return _make_failure(
+            abs_path,
+            last_action="validate_stream_requirements",
+            error_text=str(exc),
+            traceback_text=traceback.format_exc(),
+        )
+
     status = "warning" if warnings else "ready"
     return LoadedMethodPlugin(
         method_id="",
@@ -300,6 +337,7 @@ def load_method_plugin(path: str) -> LoadedMethodPlugin:
         status=status,
         warnings=warnings,
         diagnostics=None,
+        stream_requirements=stream_requirements,
     )
 
 

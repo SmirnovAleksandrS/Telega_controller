@@ -99,6 +99,7 @@ class MagnetometerTab(ttk.Frame):
         on_load_multiple: Callable[[], None] | None = None,
         on_save_current: Callable[[], None] | None = None,
         on_save_as: Callable[[], None] | None = None,
+        on_clear_dataset: Callable[[], None] | None = None,
         on_concatenate: Callable[[], None] | None = None,
         on_trim_selection: Callable[[], None] | None = None,
         on_delete_selection: Callable[[], None] | None = None,
@@ -112,6 +113,7 @@ class MagnetometerTab(ttk.Frame):
         on_calibrate_method: Callable[[str], None] | None = None,
         on_load_method_params: Callable[[str], None] | None = None,
         on_save_method_params: Callable[[str], None] | None = None,
+        on_clear_method_params: Callable[[str], None] | None = None,
         on_method_show_change: Callable[[str, bool], None] | None = None,
         on_remove_method: Callable[[str], None] | None = None,
         on_enable_method_realtime: Callable[[str], None] | None = None,
@@ -128,6 +130,7 @@ class MagnetometerTab(ttk.Frame):
         self._on_load_multiple = on_load_multiple
         self._on_save_current = on_save_current
         self._on_save_as = on_save_as
+        self._on_clear_dataset = on_clear_dataset
         self._on_concatenate = on_concatenate
         self._on_trim_selection = on_trim_selection
         self._on_delete_selection = on_delete_selection
@@ -141,6 +144,7 @@ class MagnetometerTab(ttk.Frame):
         self._on_calibrate_method = on_calibrate_method
         self._on_load_method_params = on_load_method_params
         self._on_save_method_params = on_save_method_params
+        self._on_clear_method_params = on_clear_method_params
         self._on_method_show_change = on_method_show_change
         self._on_remove_method = on_remove_method
         self._on_enable_method_realtime = on_enable_method_realtime
@@ -426,6 +430,8 @@ class MagnetometerTab(ttk.Frame):
         self.trim_selection_btn.grid(row=3, column=1, sticky="ew", pady=3)
         self.delete_selection_btn = ttk.Button(frm, text="Delete selection", command=self._handle_delete_selection)
         self.delete_selection_btn.grid(row=4, column=0, sticky="ew", padx=(0, 6), pady=3)
+        self.clear_dataset_btn = ttk.Button(frm, text="Clear datasets", command=self._handle_clear_dataset)
+        self.clear_dataset_btn.grid(row=4, column=1, sticky="ew", pady=3)
 
         summary = ttk.Frame(frm)
         summary.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -499,20 +505,27 @@ class MagnetometerTab(ttk.Frame):
             state="disabled",
         )
         self.selected_method_save_btn.grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=3)
+        self.selected_method_clear_btn = ttk.Button(
+            btns,
+            text="Clear params",
+            command=self._handle_selected_method_clear_params,
+            state="disabled",
+        )
+        self.selected_method_clear_btn.grid(row=1, column=1, sticky="ew", pady=3)
         self.selected_method_realtime_on_btn = ttk.Button(
             btns,
             text="Enable realtime",
             command=self._handle_selected_method_enable_realtime,
             state="disabled",
         )
-        self.selected_method_realtime_on_btn.grid(row=1, column=1, sticky="ew", pady=3)
+        self.selected_method_realtime_on_btn.grid(row=2, column=0, sticky="ew", padx=(0, 6), pady=3)
         self.selected_method_realtime_off_btn = ttk.Button(
             btns,
             text="Disable realtime",
             command=self._handle_selected_method_disable_realtime,
             state="disabled",
         )
-        self.selected_method_realtime_off_btn.grid(row=2, column=0, sticky="ew", padx=(0, 6), pady=3)
+        self.selected_method_realtime_off_btn.grid(row=2, column=1, sticky="ew", pady=3)
         return frm
 
     def _build_output_routing_section(self, parent: tk.Widget) -> ttk.LabelFrame:
@@ -776,12 +789,14 @@ class MagnetometerTab(ttk.Frame):
         can_calibrate: bool,
         can_load_params: bool,
         can_save_params: bool,
+        can_clear_params: bool,
         can_enable_realtime: bool,
         can_disable_realtime: bool,
     ) -> None:
         self.selected_method_calibrate_btn.configure(state="normal" if can_calibrate else "disabled")
         self.selected_method_load_btn.configure(state="normal" if can_load_params else "disabled")
         self.selected_method_save_btn.configure(state="normal" if can_save_params else "disabled")
+        self.selected_method_clear_btn.configure(state="normal" if can_clear_params else "disabled")
         self.selected_method_realtime_on_btn.configure(state="normal" if can_enable_realtime else "disabled")
         self.selected_method_realtime_off_btn.configure(state="normal" if can_disable_realtime else "disabled")
 
@@ -806,6 +821,9 @@ class MagnetometerTab(ttk.Frame):
     def set_primary_output_display(self, *, heading: float | None, source_label: str) -> None:
         self.current_data_vars["selected output heading"].set("—" if heading is None else f"{heading:.1f}°")
         self.current_data_vars["selected source"].set(source_label)
+
+    def set_clear_dataset_enabled(self, enabled: bool) -> None:
+        self.clear_dataset_btn.configure(state="normal" if enabled else "disabled")
 
     def _rebuild_method_record_controls(self, method_states: dict[str, dict[str, object]]) -> None:
         stale_ids = set(self._method_record_checks) - set(method_states)
@@ -1772,6 +1790,12 @@ class MagnetometerTab(ttk.Frame):
             return
         self._handle_method_save_params(self._selected_method_id)
 
+    def _handle_selected_method_clear_params(self) -> None:
+        if self._selected_method_id is None:
+            return
+        if self._on_clear_method_params is not None:
+            self._on_clear_method_params(self._selected_method_id)
+
     def _handle_selected_method_enable_realtime(self) -> None:
         if self._selected_method_id is None:
             return
@@ -1799,6 +1823,10 @@ class MagnetometerTab(ttk.Frame):
     def _handle_save_as(self) -> None:
         if self._on_save_as is not None:
             self._on_save_as()
+
+    def _handle_clear_dataset(self) -> None:
+        if self._on_clear_dataset is not None:
+            self._on_clear_dataset()
 
     def _handle_load_csv(self) -> None:
         if self._on_load_csv is not None:
@@ -1901,8 +1929,8 @@ class MagnetometerTab(ttk.Frame):
             sub.bind("<<MenuSelect>>", self._on_filter_menu_select)
             sub.bind("<Unmap>", self._on_filter_menu_unmap)
 
-        add_group("A: Admin", [("A0", "A0 - disable D messages"), ("A1", "A1 - enable D messages")])
-        add_group("B: Requests", [("B0", "B0 - sync request")])
+        add_group("A: Admin", [("A0", "A0 - disable D messages"), ("A1", "A1 - enable D messages"), ("A2", "A2 - set motor PID")])
+        add_group("B: Requests", [("B0", "B0 - sync request"), ("B1", "B1 - read motor PID request")])
         add_group("C: Control", [("C0", "C0 - control command")])
         add_group("D: Data", [
             ("D0", "D0 - IMU data"),
@@ -1911,7 +1939,7 @@ class MagnetometerTab(ttk.Frame):
             ("D3", "D3 - sensor tensor data"),
         ])
         add_group("E: Errors", [("E0", "E0 - error code")])
-        add_group("F: Responses", [("F0", "F0 - sync response")])
+        add_group("F: Responses", [("F0", "F0 - sync response"), ("F1", "F1 - motor PID response")])
         add_group("Other", [
             ("unknown", "unknown - unparsed frame"),
         ])

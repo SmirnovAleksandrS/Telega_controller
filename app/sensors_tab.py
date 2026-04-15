@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable
 
+from app.accelerometer_tab import AccelerometerTab
+from app.gyroscope_tab import GyroscopeTab
 from app.magnetometer_tab import MagnetometerTab
 
 
@@ -18,6 +20,7 @@ class SensorsTab(ttk.Frame):
         on_load_multiple: Callable[[], None] | None = None,
         on_save_current: Callable[[], None] | None = None,
         on_save_as: Callable[[], None] | None = None,
+        on_clear_dataset: Callable[[], None] | None = None,
         on_concatenate: Callable[[], None] | None = None,
         on_trim_selection: Callable[[], None] | None = None,
         on_delete_selection: Callable[[], None] | None = None,
@@ -31,6 +34,7 @@ class SensorsTab(ttk.Frame):
         on_calibrate_method: Callable[[str], None] | None = None,
         on_load_method_params: Callable[[str], None] | None = None,
         on_save_method_params: Callable[[str], None] | None = None,
+        on_clear_method_params: Callable[[str], None] | None = None,
         on_method_show_change: Callable[[str, bool], None] | None = None,
         on_remove_method: Callable[[str], None] | None = None,
         on_enable_method_realtime: Callable[[str], None] | None = None,
@@ -38,6 +42,8 @@ class SensorsTab(ttk.Frame):
         on_method_record_change: Callable[[str, bool], None] | None = None,
         on_select_primary_heading: Callable[[str], None] | None = None,
         on_export_metrics: Callable[[], None] | None = None,
+        accelerometer_callbacks: dict[str, Callable] | None = None,
+        gyroscope_callbacks: dict[str, Callable] | None = None,
     ) -> None:
         super().__init__(master)
 
@@ -55,6 +61,7 @@ class SensorsTab(ttk.Frame):
             on_load_multiple=on_load_multiple,
             on_save_current=on_save_current,
             on_save_as=on_save_as,
+            on_clear_dataset=on_clear_dataset,
             on_concatenate=on_concatenate,
             on_trim_selection=on_trim_selection,
             on_delete_selection=on_delete_selection,
@@ -68,6 +75,7 @@ class SensorsTab(ttk.Frame):
             on_calibrate_method=on_calibrate_method,
             on_load_method_params=on_load_method_params,
             on_save_method_params=on_save_method_params,
+            on_clear_method_params=on_clear_method_params,
             on_method_show_change=on_method_show_change,
             on_remove_method=on_remove_method,
             on_enable_method_realtime=on_enable_method_realtime,
@@ -77,3 +85,69 @@ class SensorsTab(ttk.Frame):
             on_export_metrics=on_export_metrics,
         )
         self.nb.add(self.magnetometer_tab, text="Magnetometer")
+
+        accelerometer_callbacks = dict(accelerometer_callbacks or {})
+        self.accelerometer_tab = AccelerometerTab(
+            self.nb,
+            on_start_record=accelerometer_callbacks.get("on_start_record"),
+            on_stop_record=accelerometer_callbacks.get("on_stop_record"),
+            on_load_csv=accelerometer_callbacks.get("on_load_csv"),
+            on_load_multiple=accelerometer_callbacks.get("on_load_multiple"),
+            on_save_current=accelerometer_callbacks.get("on_save_current"),
+            on_save_as=accelerometer_callbacks.get("on_save_as"),
+            on_clear_dataset=accelerometer_callbacks.get("on_clear_dataset"),
+            on_concatenate=accelerometer_callbacks.get("on_concatenate"),
+            on_trim_selection=accelerometer_callbacks.get("on_trim_selection"),
+            on_delete_selection=accelerometer_callbacks.get("on_delete_selection"),
+            on_select_dataset=accelerometer_callbacks.get("on_select_dataset"),
+            on_select_source=accelerometer_callbacks.get("on_select_source"),
+            on_source_show_change=accelerometer_callbacks.get("on_source_show_change"),
+            on_source_record_change=accelerometer_callbacks.get("on_source_record_change"),
+            on_add_plugin=accelerometer_callbacks.get("on_add_plugin"),
+            on_select_method=accelerometer_callbacks.get("on_select_method"),
+            on_open_method_info=accelerometer_callbacks.get("on_open_method_info"),
+            on_calibrate_method=accelerometer_callbacks.get("on_calibrate_method"),
+            on_load_method_params=accelerometer_callbacks.get("on_load_method_params"),
+            on_save_method_params=accelerometer_callbacks.get("on_save_method_params"),
+            on_clear_method_params=accelerometer_callbacks.get("on_clear_method_params"),
+            on_method_show_change=accelerometer_callbacks.get("on_method_show_change"),
+            on_remove_method=accelerometer_callbacks.get("on_remove_method"),
+            on_enable_method_realtime=accelerometer_callbacks.get("on_enable_method_realtime"),
+            on_disable_method_realtime=accelerometer_callbacks.get("on_disable_method_realtime"),
+            on_method_record_change=accelerometer_callbacks.get("on_method_record_change"),
+            on_select_primary_output=accelerometer_callbacks.get("on_select_primary_output"),
+        )
+        self.nb.add(self.accelerometer_tab, text="Accelerometer")
+
+        gyroscope_callbacks = dict(gyroscope_callbacks or {})
+        self.gyroscope_tab = GyroscopeTab(
+            self.nb,
+            on_start_record=gyroscope_callbacks.get("on_start_record"),
+            on_stop_record=gyroscope_callbacks.get("on_stop_record"),
+            on_load_csv=gyroscope_callbacks.get("on_load_csv"),
+            on_load_multiple=gyroscope_callbacks.get("on_load_multiple"),
+            on_save_current=gyroscope_callbacks.get("on_save_current"),
+            on_save_as=gyroscope_callbacks.get("on_save_as"),
+            on_clear_dataset=gyroscope_callbacks.get("on_clear_dataset"),
+            on_concatenate=gyroscope_callbacks.get("on_concatenate"),
+            on_trim_selection=gyroscope_callbacks.get("on_trim_selection"),
+            on_delete_selection=gyroscope_callbacks.get("on_delete_selection"),
+            on_select_dataset=gyroscope_callbacks.get("on_select_dataset"),
+            on_select_source=gyroscope_callbacks.get("on_select_source"),
+            on_source_show_change=gyroscope_callbacks.get("on_source_show_change"),
+            on_source_record_change=gyroscope_callbacks.get("on_source_record_change"),
+            on_add_plugin=gyroscope_callbacks.get("on_add_plugin"),
+            on_select_method=gyroscope_callbacks.get("on_select_method"),
+            on_open_method_info=gyroscope_callbacks.get("on_open_method_info"),
+            on_calibrate_method=gyroscope_callbacks.get("on_calibrate_method"),
+            on_load_method_params=gyroscope_callbacks.get("on_load_method_params"),
+            on_save_method_params=gyroscope_callbacks.get("on_save_method_params"),
+            on_clear_method_params=gyroscope_callbacks.get("on_clear_method_params"),
+            on_method_show_change=gyroscope_callbacks.get("on_method_show_change"),
+            on_remove_method=gyroscope_callbacks.get("on_remove_method"),
+            on_enable_method_realtime=gyroscope_callbacks.get("on_enable_method_realtime"),
+            on_disable_method_realtime=gyroscope_callbacks.get("on_disable_method_realtime"),
+            on_method_record_change=gyroscope_callbacks.get("on_method_record_change"),
+            on_select_primary_output=gyroscope_callbacks.get("on_select_primary_output"),
+        )
+        self.nb.add(self.gyroscope_tab, text="Gyroscope")

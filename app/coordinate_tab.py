@@ -2279,8 +2279,8 @@ class CoordinateTab(ttk.Frame):
             sub.bind("<<MenuSelect>>", self._on_filter_menu_select)
             sub.bind("<Unmap>", self._on_filter_menu_unmap)
 
-        add_group("A: Admin", [("A0", "A0 - disable D messages"), ("A1", "A1 - enable D messages")])
-        add_group("B: Requests", [("B0", "B0 - sync request")])
+        add_group("A: Admin", [("A0", "A0 - disable D messages"), ("A1", "A1 - enable D messages"), ("A2", "A2 - set motor PID")])
+        add_group("B: Requests", [("B0", "B0 - sync request"), ("B1", "B1 - read motor PID request")])
         add_group("C: Control", [("C0", "C0 - control command")])
         add_group("D: Data", [
             ("D0", "D0 - IMU data"),
@@ -2289,7 +2289,7 @@ class CoordinateTab(ttk.Frame):
             ("D3", "D3 - sensor tensor data"),
         ])
         add_group("E: Errors", [("E0", "E0 - error code")])
-        add_group("F: Responses", [("F0", "F0 - sync response")])
+        add_group("F: Responses", [("F0", "F0 - sync response"), ("F1", "F1 - motor PID response")])
         add_group("Other", [
             ("unknown", "unknown - unparsed frame"),
         ])

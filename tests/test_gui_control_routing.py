@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import os
 import queue
 import struct
@@ -7,12 +8,23 @@ import tempfile
 import types
 import unittest
 
+from app.calibration_streams import SCOPE_CALIBRATE, infer_stream_requirements, make_method_producer_id
 from app.dialogs import format_method_info_text
 from app.gui_app import VirtualControllerApp
 from app.magnetometer_dataset import Dataset, SampleRecord
 from app.magnetometer_plugin_loader import CalibrationRunResult, LoadedMethodPlugin, ParamIoResult, PluginDiagnostics
 from app.manual_tab import ManualControlState
-from comm.protocol import Frame, ImuData, TYPE_C0_CONTROL, TYPE_D3_SENSOR_TENSOR, parse_frame
+from comm.serial_worker import RxEvent
+from comm.protocol import (
+    Frame,
+    ImuData,
+    MotorPidData,
+    TYPE_C0_CONTROL,
+    TYPE_D3_SENSOR_TENSOR,
+    build_pid_req,
+    build_set_motor_pid,
+    parse_frame,
+)
 from comm.time_sync import TimeModel
 from runtime.contracts import AutopilotMode
 
@@ -45,6 +57,7 @@ class _DummyMagnetometerTab:
         self.rows: list[tuple[int, object]] = []
         self.summary: dict[str, str] | None = None
         self.recording_state: tuple[bool, bool, bool, bool] | None = None
+        self.clear_dataset_enabled: bool | None = None
         self.cleared = 0
         self.selected_indices: list[int] = []
         self.dataset_choices: tuple[list[str], int | None] | None = None
@@ -125,6 +138,7 @@ class _DummyMagnetometerTab:
         can_calibrate: bool,
         can_load_params: bool,
         can_save_params: bool,
+        can_clear_params: bool,
         can_enable_realtime: bool,
         can_disable_realtime: bool,
     ) -> None:
@@ -132,9 +146,13 @@ class _DummyMagnetometerTab:
             "can_calibrate": can_calibrate,
             "can_load_params": can_load_params,
             "can_save_params": can_save_params,
+            "can_clear_params": can_clear_params,
             "can_enable_realtime": can_enable_realtime,
             "can_disable_realtime": can_disable_realtime,
         }
+
+    def set_clear_dataset_enabled(self, enabled: bool) -> None:
+        self.clear_dataset_enabled = enabled
 
     def set_heading_routing(self, *, stream_choices: list[tuple[str, str]], primary_stream_id: str) -> None:
         self.heading_routing = {
@@ -168,6 +186,22 @@ class _DummyMagnetometerTab:
         self.view_state = dict(state)
 
 
+class _DummyManualTab:
+    def __init__(self) -> None:
+        self.pid_values: tuple[float, float, float, float, float, float] | None = None
+
+    def set_motor_pid_values(
+        self,
+        left_p: float,
+        left_i: float,
+        left_d: float,
+        right_p: float,
+        right_i: float,
+        right_d: float,
+    ) -> None:
+        self.pid_values = (left_p, left_i, left_d, right_p, right_i, right_d)
+
+
 class GuiControlRoutingTests(unittest.TestCase):
     def test_format_method_info_text_includes_runtime_report(self) -> None:
         text = format_method_info_text(
@@ -190,11 +224,17 @@ class GuiControlRoutingTests(unittest.TestCase):
             params_profile_path="/tmp/params.json",
             calibration_params={"params": {"offset_x": 1.0}},
             calibration_report="Raw major axis: 10.0\nCorrected major axis: 9.0",
+            stream_requirements={"calibrate": [{"slot": "mag_input", "kind": "imu.magnetometer_vector"}]},
+            stream_bindings={"calibrate": {"mag_input": "builtin::raw_magnetometer"}},
+            routing_validation={"ok": True, "issues": [], "cycle_paths": []},
         )
 
         self.assertIn('"status": "READY"', text)
         self.assertIn('"calibration_dataset_name": "session_1"', text)
         self.assertIn('"params_profile_path": "/tmp/params.json"', text)
+        self.assertIn('"stream_requirements"', text)
+        self.assertIn('"stream_bindings"', text)
+        self.assertIn('"routing_validation"', text)
         self.assertIn("Calibration report:", text)
         self.assertIn("Raw major axis: 10.0", text)
         self.assertIn("Corrected major axis: 9.0", text)
@@ -202,6 +242,94 @@ class GuiControlRoutingTests(unittest.TestCase):
     def test_manual_control_state_defaults_to_neutral_pwm(self) -> None:
         state = ManualControlState()
         self.assertEqual((state.left_cmd, state.right_cmd), (1500, 1500))
+
+    def test_finalize_initial_sync_requests_pid_when_pending(self) -> None:
+        import app.gui_app as gui_app_module
+
+        app = object.__new__(VirtualControllerApp)
+        sent: list[bytes] = []
+        app.time_model = TimeModel()
+        app._sync_points = []
+        app._initial_sync_kbest = 5
+        app._initial_sync_in_progress = True
+        app._sync_period_ms = 10_000
+        app._pending_initial_pid_read = True
+        app._pid_request_seq = 0
+        app.worker = types.SimpleNamespace(is_open=True, send=lambda payload: sent.append(payload))
+
+        old_estimate_initial = gui_app_module.estimate_initial
+        gui_app_module.estimate_initial = lambda points, k_best: TimeModel(a=1.0, b=2.0, have_lock=True)
+        try:
+            VirtualControllerApp._finalize_initial_sync(app, 500)
+        finally:
+            gui_app_module.estimate_initial = old_estimate_initial
+
+        self.assertFalse(app._initial_sync_in_progress)
+        self.assertFalse(app._pending_initial_pid_read)
+        self.assertEqual(app._next_sync_due_ms, 10_500)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][1], 0xB1)
+
+    def test_poll_rx_reschedules_after_sensor_handler_exception(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        scheduled: list[tuple[int, object]] = []
+        log_lines: list[tuple[str, str | None, str | None]] = []
+        app._is_shutting_down = False
+        app.worker = types.SimpleNamespace(rx_queue=queue.Queue())
+        app.worker.rx_queue.put(
+            RxEvent(
+                pc_rx_ms=1010,
+                parsed=ImuData(ts_ms=1000, accel=(0.0, 0.0, 1.0), magn=(0.0, 0.0, 0.0), gyro=(0.0, 0.0, 0.0)),
+            )
+        )
+        app._send_control_if_due = lambda _now_ms: None
+        app._kick_sync_if_due = lambda _now_ms: None
+        app._poll_magnetometer_calibration_jobs = lambda: None
+        app._poll_sensor_calibration_jobs = lambda _sensor: None
+        app._rx_ok = collections.deque(maxlen=64)
+        app.radio_var = types.SimpleNamespace(set=lambda _value: None)
+        app._quality_0_10 = lambda: 10
+        app.logger = types.SimpleNamespace(format_line=lambda _obj: "line", is_running=False)
+        app._append_log_to_tabs = lambda line, msg_type, tag=None: log_lines.append((line, msg_type, tag))
+        app.time_model = types.SimpleNamespace(a=1.0, b=0.0, have_lock=True)
+        app._msg_to_dict = lambda _parsed: {"type": "imu"}
+        app._update_mcu_time_label = lambda: None
+        app._update_uart_status = lambda: None
+        app._update_magnetometer_live_view = lambda _parsed, _pc_rx_ms: None
+        app._update_accelerometer_live_view = lambda _parsed, _pc_rx_ms: (_ for _ in ()).throw(KeyError("raw_magnetometer"))
+        app._update_gyroscope_live_view = lambda _parsed, _pc_rx_ms: None
+        app.root = types.SimpleNamespace(after=lambda delay, callback: scheduled.append((delay, callback)))
+
+        VirtualControllerApp._poll_rx(app)
+
+        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(scheduled[0][0], 20)
+        self.assertTrue(any("rx-handler:ImuData" in line for line, _msg_type, _tag in log_lines))
+
+    def test_handle_motor_pid_response_updates_manual_fields(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app.manual_tab = _DummyManualTab()
+        app._motor_pid_values = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+        VirtualControllerApp._handle_motor_pid_resp(
+            app,
+            MotorPidData(left_p=1.0, left_i=0.1, left_d=0.01, right_p=2.0, right_i=0.2, right_d=0.02),
+        )
+
+        self.assertEqual(app._motor_pid_values, (1.0, 0.1, 0.01, 2.0, 0.2, 0.02))
+        assert app.manual_tab.pid_values is not None
+        self.assertEqual(app.manual_tab.pid_values, (1.0, 0.1, 0.01, 2.0, 0.2, 0.02))
+
+    def test_decode_tx_msg_decodes_pid_request_and_set_frames(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+
+        pid_req = VirtualControllerApp._decode_tx_msg(app, build_pid_req(7, 1234))
+        pid_set = VirtualControllerApp._decode_tx_msg(app, build_set_motor_pid(1.0, 0.1, 0.01, 2.0, 0.2, 0.02))
+
+        self.assertEqual(pid_req, {"type": "B1", "seq": 7, "t1_pc_ms": 1234})
+        self.assertEqual(pid_set["type"], "A2")
+        self.assertAlmostEqual(pid_set["left_p"], 1.0)
+        self.assertAlmostEqual(pid_set["right_d"], 0.02)
 
     def test_coordinate_tick_preserves_left_right_order_on_uart(self) -> None:
         app = object.__new__(VirtualControllerApp)
@@ -675,6 +803,7 @@ class GuiControlRoutingTests(unittest.TestCase):
             "can_calibrate": True,
             "can_load_params": True,
             "can_save_params": False,
+            "can_clear_params": False,
             "can_enable_realtime": False,
             "can_disable_realtime": False,
         })
@@ -783,6 +912,7 @@ class GuiControlRoutingTests(unittest.TestCase):
         self.assertEqual(app.magnetometer_tab.selected_method_details["status"], "READY")
         assert app.magnetometer_tab.selected_method_actions is not None
         self.assertEqual(app.magnetometer_tab.selected_method_actions["can_save_params"], True)
+        self.assertEqual(app.magnetometer_tab.selected_method_actions["can_clear_params"], True)
         self.assertEqual(app.magnetometer_tab.selected_method_actions["can_enable_realtime"], True)
         self.assertEqual(app.magnetometer_tab.selected_method_actions["can_disable_realtime"], False)
 
@@ -918,6 +1048,72 @@ class GuiControlRoutingTests(unittest.TestCase):
         self.assertEqual(app.magnetometer_tab.selected_method_details["status"], "WARNING")
         self.assertEqual(len(warnings_seen), 1)
 
+    def test_clear_magnetometer_method_params_resets_runtime_state(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app._mag_methods = {}
+        app._mag_selected_method_id = "method_1"
+        app._mag_latest_derived_streams = {"method_1": {"heading": 42.0}}
+        app._mag_offline_method_clouds = {"method_1": []}
+        app._mag_primary_heading_stream_id = "method_1"
+        app._mag_last_live_snapshot = None
+        app._mag_recording_active = False
+        app.magnetometer_tab = _DummyMagnetometerTab()
+
+        plugin = LoadedMethodPlugin(
+            method_id="method_1",
+            name="Resettable Method",
+            version="1.0.0",
+            file_path="/tmp/resettable_method.py",
+            info={
+                "name": "Resettable Method",
+                "version": "1.0.0",
+                "type": "method",
+                "supports_calibrate": True,
+                "supports_load_params": True,
+                "supports_save_params": True,
+                "supports_process": True,
+                "input_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "output_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+            },
+            module=types.SimpleNamespace(),
+            status="ready",
+        )
+        plugin.calibration_params = {
+            "algorithm_name": "Resettable Method",
+            "algorithm_version": "1.0.0",
+            "schema_version": "1",
+            "created_at": "2026-04-12T12:00:00Z",
+            "params": {"offset": [1.0, 2.0, 3.0]},
+        }
+        plugin.params_profile_path = "/tmp/resettable_params.json"
+        plugin.calibration_report = "ok"
+        plugin.calibration_dataset_name = "session.csv"
+        plugin.calibration_runtime_s = 0.42
+        plugin.calibration_progress = 1.0
+        plugin.realtime_enabled = True
+        plugin.record_enabled = True
+        plugin.last_output = {"mag_x": 1.0, "mag_y": 2.0, "mag_z": 3.0}
+        plugin.derived_stream_id = "derived_method_1"
+        app._mag_methods["method_1"] = plugin
+
+        VirtualControllerApp._on_clear_magnetometer_method_params(app, "method_1")
+
+        self.assertIsNone(plugin.calibration_params)
+        self.assertIsNone(plugin.params_profile_path)
+        self.assertEqual(plugin.calibration_report, "")
+        self.assertIsNone(plugin.calibration_dataset_name)
+        self.assertIsNone(plugin.calibration_runtime_s)
+        self.assertEqual(plugin.calibration_progress, 0.0)
+        self.assertFalse(plugin.realtime_enabled)
+        self.assertFalse(plugin.record_enabled)
+        self.assertIsNone(plugin.last_output)
+        self.assertEqual(app._mag_latest_derived_streams, {})
+        self.assertEqual(app._mag_offline_method_clouds, {})
+        assert app.magnetometer_tab.selected_method_actions is not None
+        self.assertFalse(app.magnetometer_tab.selected_method_actions["can_save_params"])
+        self.assertFalse(app.magnetometer_tab.selected_method_actions["can_clear_params"])
+        self.assertEqual(app.magnetometer_tab.selected_method_details["status"], "WARNING")
+
     def test_serialize_magnetometer_settings_includes_paths_and_view_state(self) -> None:
         app = object.__new__(VirtualControllerApp)
         app._mag_sources = app._default_magnetometer_sources()
@@ -955,6 +1151,7 @@ class GuiControlRoutingTests(unittest.TestCase):
         plugin.record_enabled = True
         plugin.realtime_enabled = True
         plugin.params_profile_path = "/tmp/persisted_params.json"
+        plugin.stream_bindings[SCOPE_CALIBRATE] = {"mag_input": "builtin::raw_magnetometer"}
         app._mag_methods = {"method_1": plugin}
         app._mag_selected_method_id = "method_1"
         app._mag_primary_heading_stream_id = "method_1"
@@ -968,6 +1165,252 @@ class GuiControlRoutingTests(unittest.TestCase):
         self.assertEqual(snapshot["primary_heading"], {"kind": "method", "file_path": "/tmp/persisted_method.py"})
         self.assertEqual(snapshot["view_state"]["projection_mode"], "3D")
         self.assertEqual(snapshot["methods"][0]["params_profile_path"], "/tmp/persisted_params.json")
+        self.assertEqual(snapshot["methods"][0]["bindings"][SCOPE_CALIBRATE]["mag_input"], "builtin::raw_magnetometer")
+
+    def test_clear_magnetometer_datasets_removes_all_loaded_datasets(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app._mag_sources = app._default_magnetometer_sources()
+        app._mag_selected_source_id = "raw_magnetometer"
+        app._mag_recording_active = False
+        app._mag_dataset_export_path = "/tmp/old.csv"
+        app._mag_methods = {}
+        app._mag_selected_method_id = None
+        app._mag_latest_derived_streams = {}
+        app._mag_offline_method_clouds = {}
+        app.magnetometer_tab = _DummyMagnetometerTab()
+
+        dataset_a = Dataset("a", records=[
+            SampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 10, 20, 21, 1.0, 0.0, 0.0, 90.0, "")
+        ])
+        dataset_b = Dataset("b", records=[
+            SampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 20, 30, 31, 0.0, 1.0, 0.0, 0.0, "")
+        ])
+        app._mag_datasets = [dataset_a, dataset_b]
+        app._mag_dataset = dataset_b
+
+        VirtualControllerApp._on_clear_magnetometer_datasets(app)
+
+        self.assertEqual(app._mag_datasets, [])
+        self.assertIsNone(app._mag_dataset)
+        self.assertEqual(app._mag_dataset_export_path, "")
+        self.assertEqual(app.magnetometer_tab.summary, {
+            "name": "—",
+            "row_count": "0",
+            "source_count": "0",
+            "time_range": "—",
+        })
+        self.assertEqual(app.magnetometer_tab.rows, [])
+        self.assertFalse(app.magnetometer_tab.clear_dataset_enabled)
+
+    def test_binding_change_rejects_cycle_and_keeps_previous_binding(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app._mag_sources = app._default_magnetometer_sources()
+        app._mag_selected_source_id = "raw_magnetometer"
+        app._mag_dataset = Dataset(
+            "session",
+            records=[
+                SampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 10, 20, 21, 1.0, 0.0, 0.0, 90.0, "")
+            ],
+        )
+        app._mag_datasets = [app._mag_dataset]
+        app._mag_methods = {}
+        app._mag_selected_method_id = "method_1"
+        app._mag_calibration_results = queue.Queue()
+        app._mag_calibration_jobs = {}
+        app._mag_latest_derived_streams = {}
+        app._mag_offline_method_clouds = {}
+        app._mag_primary_heading_stream_id = "raw_heading"
+        app.magnetometer_tab = _DummyMagnetometerTab()
+
+        def _make_plugin(method_id: str, name: str, path: str) -> LoadedMethodPlugin:
+            plugin = LoadedMethodPlugin(
+                method_id=method_id,
+                name=name,
+                version="1.0.0",
+                file_path=path,
+                info={
+                    "name": name,
+                    "version": "1.0.0",
+                    "type": "method",
+                    "supports_calibrate": True,
+                    "supports_load_params": True,
+                    "supports_save_params": True,
+                    "supports_process": True,
+                    "input_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                    "output_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                    "stream_requirements": {
+                        "calibrate": [
+                            {
+                                "slot": "mag_input",
+                                "kind": "imu.magnetometer_vector",
+                                "required": True,
+                            }
+                        ],
+                        "process": [
+                            {
+                                "slot": "mag_input",
+                                "kind": "imu.magnetometer_vector",
+                                "required": True,
+                            }
+                        ],
+                    },
+                },
+                module=types.SimpleNamespace(process=lambda sample, params: sample),
+                status="ready",
+            )
+            plugin.calibration_params = {
+                "algorithm_name": name,
+                "algorithm_version": "1.0.0",
+                "schema_version": "1",
+                "created_at": "2026-04-12T12:00:00Z",
+                "params": {},
+            }
+            return plugin
+
+        plugin_a = _make_plugin("method_1", "Method A", "/tmp/method_a.py")
+        plugin_b = _make_plugin("method_2", "Method B", "/tmp/method_b.py")
+        plugin_a.derived_stream_id = "derived_method_1"
+        plugin_b.derived_stream_id = "derived_method_2"
+        plugin_a.stream_requirements = infer_stream_requirements(plugin_a.info)
+        plugin_b.stream_requirements = infer_stream_requirements(plugin_b.info)
+        plugin_a.stream_bindings[SCOPE_CALIBRATE] = {
+            "mag_input": make_method_producer_id(plugin_b.file_path, "imu.magnetometer_vector")
+        }
+        app._mag_methods = {"method_1": plugin_a, "method_2": plugin_b}
+
+        accepted = VirtualControllerApp._on_change_magnetometer_method_binding(
+            app,
+            "method_2",
+            "mag_input",
+            make_method_producer_id(plugin_a.file_path, "imu.magnetometer_vector"),
+        )
+
+        self.assertFalse(accepted)
+        self.assertEqual(plugin_b.stream_bindings[SCOPE_CALIBRATE], {})
+        validation = plugin_b.routing_validation[SCOPE_CALIBRATE].as_dict()
+        disabled_candidates = validation["slot_candidates"]["mag_input"]
+        matching = [
+            candidate
+            for candidate in disabled_candidates
+            if candidate["producer_id"] == make_method_producer_id(plugin_a.file_path, "imu.magnetometer_vector")
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertIn("cycle", matching[0]["disabled_reason"])
+
+    def test_offline_method_clouds_can_chain_through_upstream_method_binding(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app._mag_sources = app._default_magnetometer_sources()
+        app._mag_selected_source_id = "raw_magnetometer"
+        app._mag_dataset = Dataset(
+            "session.csv",
+            records=[
+                SampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 100, 110, 108, 5.0, 2.0, 1.0, 68.0, ""),
+                SampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 200, 210, 208, 8.0, 3.0, 1.0, 69.0, ""),
+            ],
+            source_path="/tmp/session.csv",
+        )
+        app._mag_datasets = [app._mag_dataset]
+        app._mag_methods = {}
+        app._mag_selected_method_id = "method_2"
+        app._mag_calibration_results = queue.Queue()
+        app._mag_calibration_jobs = {}
+        app._mag_latest_derived_streams = {}
+        app._mag_offline_method_clouds = {}
+        app._mag_primary_heading_stream_id = "raw_heading"
+        app.magnetometer_tab = _DummyMagnetometerTab()
+        app._open_magnetometer_method_diagnostics = lambda _method_id: None
+
+        plugin_a = LoadedMethodPlugin(
+            method_id="method_1",
+            name="Offset Method",
+            version="1.0.0",
+            file_path="/tmp/offset_method.py",
+            info={
+                "name": "Offset Method",
+                "version": "1.0.0",
+                "type": "method",
+                "supports_calibrate": True,
+                "supports_load_params": True,
+                "supports_save_params": True,
+                "supports_process": True,
+                "input_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "output_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+            },
+            module=types.SimpleNamespace(
+                process=lambda sample, params: {
+                    "mag_x": float(sample["mag_x"]) - float(params["params"]["offset_x"]),
+                    "mag_y": float(sample["mag_y"]) - float(params["params"]["offset_y"]),
+                    "mag_z": float(sample["mag_z"]) - float(params["params"]["offset_z"]),
+                }
+            ),
+            status="ready",
+        )
+        plugin_a.calibration_params = {
+            "algorithm_name": "Offset Method",
+            "algorithm_version": "1.0.0",
+            "schema_version": "1",
+            "created_at": "2026-04-12T12:00:00Z",
+            "params": {"offset_x": 1.0, "offset_y": 1.0, "offset_z": 0.0},
+        }
+        plugin_a.derived_stream_id = "derived_method_1"
+        plugin_a.stream_requirements = infer_stream_requirements(plugin_a.info)
+
+        plugin_b = LoadedMethodPlugin(
+            method_id="method_2",
+            name="Scale Method",
+            version="1.0.0",
+            file_path="/tmp/scale_method.py",
+            info={
+                "name": "Scale Method",
+                "version": "1.0.0",
+                "type": "method",
+                "supports_calibrate": True,
+                "supports_load_params": True,
+                "supports_save_params": True,
+                "supports_process": True,
+                "input_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "output_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "stream_requirements": {
+                    "calibrate": [
+                        {
+                            "slot": "mag_input",
+                            "kind": "imu.magnetometer_vector",
+                            "required": True,
+                        }
+                    ]
+                },
+            },
+            module=types.SimpleNamespace(
+                process=lambda sample, params: {
+                    "mag_x": float(sample["mag_x"]) * float(params["params"]["scale"]),
+                    "mag_y": float(sample["mag_y"]) * float(params["params"]["scale"]),
+                    "mag_z": float(sample["mag_z"]) * float(params["params"]["scale"]),
+                }
+            ),
+            status="ready",
+        )
+        plugin_b.calibration_params = {
+            "algorithm_name": "Scale Method",
+            "algorithm_version": "1.0.0",
+            "schema_version": "1",
+            "created_at": "2026-04-12T12:00:00Z",
+            "params": {"scale": 2.0},
+        }
+        plugin_b.derived_stream_id = "derived_method_2"
+        plugin_b.stream_requirements = infer_stream_requirements(plugin_b.info)
+        plugin_b.stream_bindings[SCOPE_CALIBRATE] = {
+            "mag_input": make_method_producer_id(plugin_a.file_path, "imu.magnetometer_vector")
+        }
+
+        app._mag_methods = {"method_1": plugin_a, "method_2": plugin_b}
+
+        VirtualControllerApp._refresh_all_magnetometer_method_dataset_clouds(app)
+
+        assert app.magnetometer_tab.method_dataset_clouds is not None
+        derived_records = app.magnetometer_tab.method_dataset_clouds["method_2"]
+        self.assertEqual(len(derived_records), 2)
+        self.assertEqual((derived_records[0].mag_x, derived_records[0].mag_y, derived_records[0].mag_z), (8.0, 2.0, 2.0))
+        self.assertEqual((derived_records[1].mag_x, derived_records[1].mag_y, derived_records[1].mag_z), (14.0, 4.0, 2.0))
 
     def test_apply_magnetometer_calibration_error_marks_method_red(self) -> None:
         app = object.__new__(VirtualControllerApp)

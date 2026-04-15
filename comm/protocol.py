@@ -13,9 +13,11 @@ D1: u32 ts_ms + i32 left_rpm + i32 right_rpm
 D2: u32 ts_ms + i16 cur_l + i16 cur_r + i16 volt_l + i16 volt_r + i16 temp_l + i16 temp_r
 D3: u32 ts_ms + 12 * float32
 B0: u16 seq + u32 pc_time_ms (u32)
+B1: u16 seq + u32 pc_time_ms (u32)
 F0: u32 t2_mcu_rx_ms + u32 t3_mcu_tx_ms
+F1: 6 * float32 motor PID coefficients
 C0: u32 ts_ms + i16 left_cmd + i16 right_cmd + u16 duration_ms
-A0/A1: see PDF (we implement builders).
+A0/A1/A2: see PDF (we implement builders).
 """
 
 from __future__ import annotations
@@ -33,10 +35,13 @@ TYPE_D1_TACHO = 0xD1
 TYPE_D2_MOTOR = 0xD2
 TYPE_D3_SENSOR_TENSOR = 0xD3
 TYPE_B0_SYNC_REQ  = 0xB0
+TYPE_B1_PID_REQ   = 0xB1
 TYPE_F0_SYNC_RESP = 0xF0
+TYPE_F1_PID_RESP  = 0xF1
 TYPE_C0_CONTROL   = 0xC0
 TYPE_A0_DISABLE_D = 0xA0
 TYPE_A1_ENABLE_D  = 0xA1
+TYPE_A2_SET_PID   = 0xA2
 
 @dataclass
 class Frame:
@@ -79,7 +84,16 @@ class SyncResp:
     t2_rx_ms: int
     t3_tx_ms: int
 
-ParsedMsg = Union[ImuData, TachoData, MotorData, SensorTensorData, SyncResp, Frame]
+@dataclass
+class MotorPidData:
+    left_p: float
+    left_i: float
+    left_d: float
+    right_p: float
+    right_i: float
+    right_d: float
+
+ParsedMsg = Union[ImuData, TachoData, MotorData, SensorTensorData, SyncResp, MotorPidData, Frame]
 
 class StreamParser:
     """
@@ -172,6 +186,17 @@ def parse_frame(frame: Frame) -> ParsedMsg:
         t2, t3 = struct.unpack_from("<II", p, 0)
         return SyncResp(t2_rx_ms=t2, t3_tx_ms=t3)
 
+    if t == TYPE_F1_PID_RESP and len(p) == 24:
+        left_p, left_i, left_d, right_p, right_i, right_d = struct.unpack_from("<6f", p, 0)
+        return MotorPidData(
+            left_p=left_p,
+            left_i=left_i,
+            left_d=left_d,
+            right_p=right_p,
+            right_i=right_i,
+            right_d=right_d,
+        )
+
     return frame
 
 
@@ -189,6 +214,11 @@ def build_frame(msg_type: int, payload: bytes) -> bytes:
 def build_sync_req(seq: int, t1_pc_ms_u32: int) -> bytes:
     payload = struct.pack("<HI", seq & 0xFFFF, t1_pc_ms_u32 & 0xFFFFFFFF)
     return build_frame(TYPE_B0_SYNC_REQ, payload)
+
+
+def build_pid_req(seq: int, t1_pc_ms_u32: int) -> bytes:
+    payload = struct.pack("<HI", seq & 0xFFFF, t1_pc_ms_u32 & 0xFFFFFFFF)
+    return build_frame(TYPE_B1_PID_REQ, payload)
 
 
 def build_control(ts_ms_u32: int, left_cmd: int, right_cmd: int, duration_ms: int) -> bytes:
@@ -210,3 +240,23 @@ def build_disable_d(ts_ms_u32: int, d_type: int) -> bytes:
 def build_enable_d(ts_ms_u32: int, d_type: int, period_ms: int) -> bytes:
     payload = struct.pack("<IBH", ts_ms_u32 & 0xFFFFFFFF, d_type & 0xFF, period_ms & 0xFFFF)
     return build_frame(TYPE_A1_ENABLE_D, payload)
+
+
+def build_set_motor_pid(
+    left_p: float,
+    left_i: float,
+    left_d: float,
+    right_p: float,
+    right_i: float,
+    right_d: float,
+) -> bytes:
+    payload = struct.pack(
+        "<6f",
+        float(left_p),
+        float(left_i),
+        float(left_d),
+        float(right_p),
+        float(right_i),
+        float(right_d),
+    )
+    return build_frame(TYPE_A2_SET_PID, payload)

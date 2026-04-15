@@ -9,6 +9,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from dataclasses import dataclass
+from typing import Any, Callable
 
 from app.tk_utils import bind_vertical_mousewheel, prepare_toplevel
 from comm.serial_worker import SerialWorker
@@ -398,26 +399,209 @@ class AddPluginDialog(tk.Toplevel):
 
 
 class MethodInfoDialog(tk.Toplevel):
-    def __init__(self, master: tk.Widget, *, title: str, info_text: str) -> None:
+    def __init__(
+        self,
+        master: tk.Widget,
+        *,
+        title: str,
+        payload_provider: Callable[[], dict[str, Any]],
+        on_binding_change: Callable[[str, str], bool] | None = None,
+    ) -> None:
         super().__init__(master)
         self.title(title)
-        self.geometry("720x520")
+        self.geometry("900x760")
+        self.minsize(760, 620)
+        self._payload_provider = payload_provider
+        self._on_binding_change = on_binding_change
+        self._binding_vars: dict[str, tk.StringVar] = {}
+        self._binding_menus: dict[str, tk.Menu] = {}
 
-        frm = ttk.Frame(self, padding=10)
-        frm.pack(fill="both", expand=True)
+        root = ttk.Frame(self, padding=10)
+        root.pack(fill="both", expand=True)
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(4, weight=1)
 
-        text = tk.Text(frm, wrap="word")
-        text.pack(side="left", fill="both", expand=True)
-        bind_vertical_mousewheel(text)
-        text.insert("1.0", info_text)
-        text.configure(state="disabled")
+        summary = ttk.LabelFrame(root, text="Method", padding=8)
+        summary.grid(row=0, column=0, sticky="ew")
+        summary.columnconfigure(1, weight=1)
+        self._summary_vars = {
+            "name": tk.StringVar(value="-"),
+            "version": tk.StringVar(value="-"),
+            "status": tk.StringVar(value="-"),
+            "file_path": tk.StringVar(value="-"),
+        }
+        for row, (label, key) in enumerate((
+            ("Name", "name"),
+            ("Version", "version"),
+            ("Status", "status"),
+            ("File path", "file_path"),
+        )):
+            ttk.Label(summary, text=label).grid(row=row, column=0, sticky="nw", pady=2)
+            if key == "file_path":
+                ttk.Label(summary, textvariable=self._summary_vars[key], wraplength=640, justify="left").grid(
+                    row=row,
+                    column=1,
+                    sticky="ew",
+                    padx=(8, 0),
+                    pady=2,
+                )
+            else:
+                ttk.Label(summary, textvariable=self._summary_vars[key]).grid(
+                    row=row,
+                    column=1,
+                    sticky="w",
+                    padx=(8, 0),
+                    pady=2,
+                )
 
-        yscroll = ttk.Scrollbar(frm, orient="vertical", command=text.yview)
-        yscroll.pack(side="right", fill="y")
-        text.configure(yscrollcommand=yscroll.set)
+        middle = ttk.Frame(root)
+        middle.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        middle.columnconfigure(0, weight=1)
+        middle.columnconfigure(1, weight=1)
+        middle.rowconfigure(1, weight=1)
 
+        capabilities = ttk.LabelFrame(middle, text="Capabilities", padding=8)
+        capabilities.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        capabilities.columnconfigure(0, weight=1)
+        self.capabilities_text = tk.Text(capabilities, height=5, wrap="word")
+        self.capabilities_text.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.capabilities_text)
+        self.capabilities_text.configure(state="disabled")
+
+        schemas = ttk.LabelFrame(middle, text="Schemas", padding=8)
+        schemas.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+        schemas.columnconfigure(0, weight=1)
+        schemas.rowconfigure(1, weight=1)
+        ttk.Label(schemas, text="Declared input/output schemas").grid(row=0, column=0, sticky="w")
+        self.schemas_text = tk.Text(schemas, height=5, wrap="word")
+        self.schemas_text.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        bind_vertical_mousewheel(self.schemas_text)
+        self.schemas_text.configure(state="disabled")
+
+        self.bindings_frame = ttk.LabelFrame(middle, text="Calibration Input Bindings", padding=8)
+        self.bindings_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 6), pady=(8, 0))
+        self.bindings_frame.columnconfigure(1, weight=1)
+
+        validation = ttk.LabelFrame(middle, text="Validation", padding=8)
+        validation.grid(row=1, column=1, sticky="nsew", padx=(6, 0), pady=(8, 0))
+        validation.columnconfigure(0, weight=1)
+        self.validation_text = tk.Text(validation, height=10, wrap="word")
+        self.validation_text.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.validation_text)
+        self.validation_text.configure(state="disabled")
+
+        calibration_summary = ttk.LabelFrame(root, text="Calibration Summary", padding=8)
+        calibration_summary.grid(row=4, column=0, sticky="nsew", pady=(8, 0))
+        calibration_summary.columnconfigure(0, weight=1)
+        calibration_summary.rowconfigure(0, weight=1)
+        self.summary_text = tk.Text(calibration_summary, height=8, wrap="word")
+        self.summary_text.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.summary_text)
+        self.summary_text.configure(state="disabled")
+        summary_scroll = ttk.Scrollbar(calibration_summary, orient="vertical", command=self.summary_text.yview)
+        summary_scroll.grid(row=0, column=1, sticky="ns")
+        self.summary_text.configure(yscrollcommand=summary_scroll.set)
+
+        raw_frame = ttk.LabelFrame(root, text="Raw Output", padding=8)
+        raw_frame.grid(row=5, column=0, sticky="nsew", pady=(8, 0))
+        raw_frame.columnconfigure(0, weight=1)
+        raw_frame.rowconfigure(0, weight=1)
+        self.raw_text = tk.Text(raw_frame, wrap="none")
+        self.raw_text.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.raw_text)
+        self.raw_text.configure(state="disabled")
+        raw_scroll = ttk.Scrollbar(raw_frame, orient="vertical", command=self.raw_text.yview)
+        raw_scroll.grid(row=0, column=1, sticky="ns")
+        self.raw_text.configure(yscrollcommand=raw_scroll.set)
+
+        close_bar = ttk.Frame(root)
+        close_bar.grid(row=6, column=0, sticky="e", pady=(8, 0))
+        ttk.Button(close_bar, text="Close", command=self.destroy).pack(side="right")
+
+        self._refresh_from_provider()
         prepare_toplevel(self, master)
         self.grab_set()
+
+    def _set_readonly_text(self, widget: tk.Text, value: str) -> None:
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", value)
+        widget.configure(state="disabled")
+
+    def _refresh_from_provider(self) -> None:
+        payload = self._payload_provider()
+        self._summary_vars["name"].set(str(payload.get("name", "-")))
+        self._summary_vars["version"].set(str(payload.get("version", "-")))
+        self._summary_vars["status"].set(str(payload.get("status", "-")))
+        self._summary_vars["file_path"].set(str(payload.get("file_path", "-")))
+
+        capabilities_lines = payload.get("capabilities_lines", []) or ["-"]
+        self._set_readonly_text(self.capabilities_text, "\n".join(str(line) for line in capabilities_lines))
+        self._set_readonly_text(self.schemas_text, str(payload.get("schema_text", "-")))
+        self._set_readonly_text(self.summary_text, str(payload.get("summary_text", "{}")))
+        self._set_readonly_text(self.validation_text, str(payload.get("validation_text", "-")))
+        self._set_readonly_text(self.raw_text, str(payload.get("raw_text", "")))
+        self._rebuild_bindings(payload.get("calibration_bindings", []))
+
+    def _rebuild_bindings(self, bindings: list[dict[str, Any]]) -> None:
+        for child in self.bindings_frame.winfo_children():
+            child.destroy()
+        self._binding_vars.clear()
+        self._binding_menus.clear()
+
+        if not bindings:
+            ttk.Label(self.bindings_frame, text="No calibration inputs declared.").grid(row=0, column=0, sticky="w")
+            return
+
+        for row, binding in enumerate(bindings):
+            label = str(binding.get("label") or binding.get("slot") or "-")
+            description = str(binding.get("description", "")).strip()
+            selected_label = str(binding.get("selected_label", "Not selected"))
+            slot = str(binding.get("slot", "")).strip()
+
+            ttk.Label(self.bindings_frame, text=label).grid(row=row * 2, column=0, sticky="nw", pady=(0, 2))
+            value_var = tk.StringVar(value=selected_label)
+            self._binding_vars[slot] = value_var
+            button = ttk.Menubutton(self.bindings_frame, textvariable=value_var, direction="below")
+            button.grid(row=row * 2, column=1, sticky="ew", padx=(8, 0), pady=(0, 2))
+            menu = tk.Menu(button, tearoff=False)
+            button.configure(menu=menu)
+            self._binding_menus[slot] = menu
+
+            for candidate in binding.get("candidates", []):
+                producer_id = str(candidate.get("producer_id", "")).strip()
+                title = str(candidate.get("title") or producer_id or "-")
+                reason = str(candidate.get("disabled_reason", "")).strip()
+                selectable = bool(candidate.get("selectable", False))
+                item_label = title if selectable or not reason else f"{title} [{reason}]"
+                menu.add_command(
+                    label=item_label,
+                    state="normal" if selectable else "disabled",
+                    command=lambda slot=slot, producer_id=producer_id: self._handle_binding_change(slot, producer_id),
+                )
+
+            if description:
+                ttk.Label(
+                    self.bindings_frame,
+                    text=f"{binding.get('kind', '-')}: {description}",
+                    wraplength=360,
+                    justify="left",
+                ).grid(row=row * 2 + 1, column=1, sticky="w", padx=(8, 0), pady=(0, 6))
+            else:
+                ttk.Label(self.bindings_frame, text=str(binding.get("kind", "-"))).grid(
+                    row=row * 2 + 1,
+                    column=1,
+                    sticky="w",
+                    padx=(8, 0),
+                    pady=(0, 6),
+                )
+
+    def _handle_binding_change(self, slot: str, producer_id: str) -> None:
+        if self._on_binding_change is not None:
+            accepted = bool(self._on_binding_change(slot, producer_id))
+            if not accepted:
+                self.bell()
+        self._refresh_from_provider()
 
 
 class MethodDiagnosticsDialog(tk.Toplevel):
@@ -470,7 +654,16 @@ def format_method_info_text(
     params_profile_path: str | None = None,
     calibration_params: object = None,
     calibration_report: str = "",
+    stream_requirements: dict[str, object] | None = None,
+    stream_bindings: dict[str, object] | None = None,
+    routing_validation: dict[str, object] | None = None,
+    diagnostics: dict[str, object] | None = None,
 ) -> str:
+    calibration_summary = {}
+    if isinstance(calibration_params, dict):
+        summary = calibration_params.get("calibration_summary")
+        if isinstance(summary, dict):
+            calibration_summary = dict(summary)
     capabilities = [
         f"supports_calibrate={bool(info.get('supports_calibrate', False))}",
         f"supports_load_params={bool(info.get('supports_load_params', False))}",
@@ -493,9 +686,97 @@ def format_method_info_text(
             "params_profile_path": params_profile_path or "",
             "has_calibration_params": calibration_params is not None,
             "calibration_params": calibration_params,
+            "calibration_summary": calibration_summary,
         },
+        "stream_requirements": stream_requirements or {},
+        "stream_bindings": stream_bindings or {},
+        "routing_validation": routing_validation or {},
+        "diagnostics": diagnostics or {},
     }
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     if calibration_report:
         text = f"{text}\n\nCalibration report:\n{calibration_report}"
     return text
+
+
+def build_method_info_payload(
+    info: dict[str, object],
+    *,
+    file_path: str,
+    status_text: str = "-",
+    warnings: list[str] | None = None,
+    calibration_dataset_name: str | None = None,
+    calibration_runtime_s: float | None = None,
+    params_profile_path: str | None = None,
+    calibration_params: object = None,
+    calibration_report: str = "",
+    stream_requirements: dict[str, object] | None = None,
+    stream_bindings: dict[str, object] | None = None,
+    routing_validation: dict[str, object] | None = None,
+    diagnostics: dict[str, object] | None = None,
+    calibration_bindings: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    calibration_summary = {}
+    if isinstance(calibration_params, dict):
+        summary = calibration_params.get("calibration_summary")
+        if isinstance(summary, dict):
+            calibration_summary = dict(summary)
+    raw_text = format_method_info_text(
+        info,
+        file_path=file_path,
+        status_text=status_text,
+        warnings=warnings,
+        calibration_dataset_name=calibration_dataset_name,
+        calibration_runtime_s=calibration_runtime_s,
+        params_profile_path=params_profile_path,
+        calibration_params=calibration_params,
+        calibration_report=calibration_report,
+        stream_requirements=stream_requirements,
+        stream_bindings=stream_bindings,
+        routing_validation=routing_validation,
+        diagnostics=diagnostics,
+    )
+    capabilities_lines = [
+        f"supports_calibrate={bool(info.get('supports_calibrate', False))}",
+        f"supports_load_params={bool(info.get('supports_load_params', False))}",
+        f"supports_save_params={bool(info.get('supports_save_params', False))}",
+        f"supports_process={bool(info.get('supports_process', False))}",
+    ]
+    validation = routing_validation or {}
+    issues = validation.get("issues", []) if isinstance(validation, dict) else []
+    cycle_paths = validation.get("cycle_paths", []) if isinstance(validation, dict) else []
+    validation_lines = [
+        f"ok={bool(validation.get('ok', False)) if isinstance(validation, dict) else False}",
+        "",
+        "Issues:",
+        *(list(issues) or ["-"]),
+        "",
+        "Cycles:",
+        *(list(cycle_paths) or ["-"]),
+    ]
+    schema_text = json.dumps(
+        {
+            "input_schema": info.get("input_schema"),
+            "output_schema": info.get("output_schema"),
+            "stream_requirements": stream_requirements or {},
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    summary_text = (
+        json.dumps(calibration_summary, ensure_ascii=False, indent=2)
+        if calibration_summary
+        else "{}"
+    )
+    return {
+        "name": info.get("name", "-"),
+        "version": info.get("version", "-"),
+        "status": status_text,
+        "file_path": file_path,
+        "capabilities_lines": capabilities_lines,
+        "schema_text": schema_text,
+        "summary_text": summary_text,
+        "validation_text": "\n".join(str(line) for line in validation_lines),
+        "raw_text": raw_text,
+        "calibration_bindings": list(calibration_bindings or []),
+    }

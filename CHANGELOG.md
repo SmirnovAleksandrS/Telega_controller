@@ -23,6 +23,10 @@ Log format: .log (JSON Lines)
   - saves parsed messages to .log as JSONL, includes PC receive time and time model snapshot
 
 ## Unreleased
+- Manual control: added left/right motor PID editors with debounced `A2` send, explicit `Send PID` / `Read PID` actions, automatic `B1` PID read after initial connection time-sync, `F1` response handling back into the same UI fields, and log filters for the new PID packet types.
+- Magnetometer workflow: added `Clear datasets` to drop all loaded/recorded datasets from memory and `Clear params` to reset a method back to an uncalibrated runtime state without removing the plugin itself.
+- Magnetometer calibration routing: added optional plugin `stream_requirements`, a shared latest-snapshot stream registry, persisted per-method input bindings keyed by plugin path, offline upstream-stream resolution for chained calibrations, and dataset metadata snapshots of active method bindings.
+- Method Info modal: replaced the plain raw-text view with a structured dialog showing method identity, schemas, calibration input bindings with disabled reasons/cycle checks, validation state, and a raw JSON/log pane for runtime diagnostics.
 - Magnetometer GUI: method cards now expose a `Record` toggle alongside `Show`; enabling realtime defaults the method into recording, CSV metadata now lists recorded streams/methods explicitly, and recorded derived streams continue into the same dataset/point-cloud flow as raw magnetometer samples.
 - External runtime bridge: fixed GUI <-> C++ TCP shutdown lifecycle. `stop` now closes only the active session, while explicit `shutdown`/`kill` terminates the stub process and frees the port.
 - GUI runtime lifecycle: fixed kill/tab-switch paths to call the real external runtime stop method instead of a missing `_stop_external_autopilot`.

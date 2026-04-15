@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.imu_dataset import ImuDataset
+
 CSV_COLUMNS = (
     "stream_id",
     "stream_type",
@@ -150,6 +152,8 @@ class Dataset:
 
     @classmethod
     def from_csv(cls, path: str) -> Dataset:
+        if ImuDataset.is_imu_csv(path):
+            return ImuDataset.from_csv(path).project_magnetometer_dataset()
         metadata: dict[str, Any] = {}
         with open(path, "r", encoding="utf-8", newline="") as fh:
             data_lines: list[str] = []

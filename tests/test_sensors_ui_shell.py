@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 import unittest
 
+from app.accelerometer_tab import AccelerometerTab, compute_accelerometer_tilt_deg
+from app.gyroscope_tab import GyroscopeTab, compute_gyro_rate_magnitude
 from app.magnetometer_tab import (
     MagnetometerTab,
     PROJECTION_3D,
@@ -27,6 +29,12 @@ class SensorsUiShellImportTests(unittest.TestCase):
     def test_magnetometer_tab_is_a_ttk_frame(self) -> None:
         self.assertTrue(issubclass(MagnetometerTab, ttk.Frame))
 
+    def test_accelerometer_tab_is_a_ttk_frame(self) -> None:
+        self.assertTrue(issubclass(AccelerometerTab, ttk.Frame))
+
+    def test_gyroscope_tab_is_a_ttk_frame(self) -> None:
+        self.assertTrue(issubclass(GyroscopeTab, ttk.Frame))
+
     def test_source_card_is_a_tk_widget(self) -> None:
         self.assertTrue(issubclass(SourceCard, tk.Widget))
 
@@ -36,6 +44,8 @@ class SensorsUiShellImportTests(unittest.TestCase):
     def test_new_tabs_keep_tk_widget_contract(self) -> None:
         self.assertTrue(issubclass(SensorsTab, tk.Widget))
         self.assertTrue(issubclass(MagnetometerTab, tk.Widget))
+        self.assertTrue(issubclass(AccelerometerTab, tk.Widget))
+        self.assertTrue(issubclass(GyroscopeTab, tk.Widget))
 
     def test_raw_heading_uses_north_zero_east_ninety(self) -> None:
         self.assertAlmostEqual(compute_raw_heading_deg(0.0, 1.0), 0.0)
@@ -45,6 +55,14 @@ class SensorsUiShellImportTests(unittest.TestCase):
 
     def test_raw_heading_returns_none_for_zero_vector(self) -> None:
         self.assertIsNone(compute_raw_heading_deg(0.0, 0.0))
+
+    def test_accelerometer_tilt_helper_reports_level_gravity(self) -> None:
+        roll_deg, pitch_deg = compute_accelerometer_tilt_deg(0.0, 0.0, 1.0)
+        self.assertAlmostEqual(roll_deg or 0.0, 0.0)
+        self.assertAlmostEqual(pitch_deg or 0.0, 0.0)
+
+    def test_gyro_rate_magnitude_helper_returns_vector_norm(self) -> None:
+        self.assertAlmostEqual(compute_gyro_rate_magnitude(3.0, 4.0, 12.0) or 0.0, 13.0)
 
     def test_projection_xy_maps_horizontal_plane_directly(self) -> None:
         self.assertEqual(project_magnetometer_point(PROJECTION_XY, 1.5, -2.0, 3.25), (1.5, -2.0))
