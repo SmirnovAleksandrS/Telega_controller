@@ -428,18 +428,25 @@ class ManualTab(ttk.Frame):
         self.rpm_canvas = tk.Canvas(frm, height=140, bg=PANEL_BG, highlightthickness=1, highlightbackground="#333333")
         self.rpm_canvas.pack(fill="both", expand=True)
 
-    def append_log_line(self, line: str, tag: str | None = None) -> None:
+    def append_log_lines(self, entries: list[tuple[str, str | None]]) -> None:
+        if not entries:
+            return
         self.log_text.configure(state="normal")
-        if tag:
-            self.log_text.insert("end", line + "\n", (tag,))
-        else:
-            self.log_text.insert("end", line + "\n")
-        self._log_lines += 1
-        if self._log_lines > self._log_max_lines:
-            self.log_text.delete("1.0", "2.0")
-            self._log_lines -= 1
+        for line, tag in entries:
+            if tag:
+                self.log_text.insert("end", line + "\n", (tag,))
+            else:
+                self.log_text.insert("end", line + "\n")
+        self._log_lines += len(entries)
+        overflow = self._log_lines - self._log_max_lines
+        if overflow > 0:
+            self.log_text.delete("1.0", f"{overflow + 1}.0")
+            self._log_lines -= overflow
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+
+    def append_log_line(self, line: str, tag: str | None = None) -> None:
+        self.append_log_lines([(line, tag)])
 
     def should_show_log(self, msg_type: str | None) -> bool:
         if not msg_type:

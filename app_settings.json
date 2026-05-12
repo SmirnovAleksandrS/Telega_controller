@@ -49,26 +49,26 @@
       },
       {
         "anchor": [
-          302.1331824620309,
-          71.12114853122995
+          210.45003169032427,
+          -48.70169827810389
         ],
         "handle_in": [
-          -43.22389843098733,
-          8.17749429775435
+          -3.1860367393848037,
+          58.4106735553882
         ],
         "handle_out": [
-          43.22389843098733,
-          -8.17749429775435
+          3.1860367393848037,
+          -58.4106735553882
         ]
       },
       {
         "anchor": [
-          435.30951816831623,
-          184.43785522868328
+          499.3173627278803,
+          -66.75590646795115
         ],
         "handle_in": [
-          -5.841067355538826,
-          -51.40139272874171
+          -77.52689399169697,
+          -1.0620122464616202
         ],
         "handle_out": [
           56.24139086796322,
@@ -76,13 +76,13 @@
         ]
       }
     ],
-    "scale": "50 cm",
-    "map_path": "",
+    "scale": "10 m",
+    "map_path": "/home/necrosii/Документы/TiiT/VOY_Rover/Conf/map.png",
     "map_scale_factor": 1.0,
-    "map_rotation_deg": 42.0,
+    "map_rotation_deg": 46.0,
     "map_center": [
-      210.0,
-      210.0
+      382.8193278526787,
+      295.4021411121657
     ],
     "min_radius_cm": "50",
     "v_cm": "5",
@@ -95,17 +95,17 @@
     "right_linear": "1",
     "pose_source": "trolley",
     "autopilot_mode": "builtin_pure_pursuit",
-    "view_scale": 1.4019755979255726,
+    "view_scale": 0.5945745120965763,
     "view_pan": [
-      56.402839056007096,
-      89.89348178890518
+      132.68953927601268,
+      101.23073006529778
     ]
   },
   "magnetometer": {
     "datasets": [
       "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_vStab_Chel_circle_RobotDriven.csv"
     ],
-    "active_dataset_path": "",
+    "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/YDX_Rover_vStab_Chel_circle_RobotDriven.csv",
     "sources": {
       "raw_magnetometer": {
         "show": true,
@@ -116,7 +116,7 @@
         "record": false
       }
     },
-    "selected_source_id": "raw_magnetometer",
+    "selected_source_id": "raw_heading",
     "methods": [
       {
         "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/simpleHardIroning.py",
@@ -152,12 +152,12 @@
         }
       }
     ],
-    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/simpleHardIroning.py",
+    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/analyticGeometryTransform2D.py",
     "primary_heading": {
       "kind": "raw"
     },
     "view_state": {
-      "projection_mode": "XY",
+      "projection_mode": "3D",
       "auto_fit": false,
       "view_options": {
         "show raw points": true,

@@ -31,6 +31,7 @@ MIN_CLOUD_POINTS_PER_STREAM = 120
 LIVE_REDRAW_INTERVAL_S = 1.0 / 24.0
 DATA_TABLE_FLUSH_DELAY_MS = 80
 DATA_TABLE_FLUSH_BATCH = 240
+DATA_TABLE_FORCE_FLUSH_BATCH = DATA_TABLE_FLUSH_BATCH * 4
 
 
 def compute_raw_heading_deg(mx: float, my: float) -> float | None:
@@ -1594,9 +1595,12 @@ class MagnetometerTab(ttk.Frame):
         return getattr(self, "data_tab_frame", None) is not None and self.bottom_nb.select() == str(self.data_tab_frame)
 
     def _schedule_dataset_row_flush(self) -> None:
+        self._schedule_dataset_row_flush_after(DATA_TABLE_FLUSH_DELAY_MS)
+
+    def _schedule_dataset_row_flush_after(self, delay_ms: int) -> None:
         if self._dataset_row_flush_after_id is not None:
             return
-        self._dataset_row_flush_after_id = self.after(DATA_TABLE_FLUSH_DELAY_MS, self._flush_pending_dataset_rows)
+        self._dataset_row_flush_after_id = self.after(delay_ms, self._flush_pending_dataset_rows)
 
     def _flush_pending_dataset_rows(self, *, force_all: bool = False) -> None:
         self._dataset_row_flush_after_id = None
@@ -1604,21 +1608,23 @@ class MagnetometerTab(ttk.Frame):
             return
         if self._recording_active and not force_all and not self._is_data_tab_visible():
             return
-        batch_size = len(self._pending_dataset_rows) if force_all else min(DATA_TABLE_FLUSH_BATCH, len(self._pending_dataset_rows))
+        batch_limit = DATA_TABLE_FORCE_FLUSH_BATCH if force_all else DATA_TABLE_FLUSH_BATCH
+        batch_size = min(batch_limit, len(self._pending_dataset_rows))
         batch = self._pending_dataset_rows[:batch_size]
         del self._pending_dataset_rows[:batch_size]
         for row_id, record in batch:
             self._insert_dataset_row(row_id, record)
         if self._pending_dataset_rows:
-            self._schedule_dataset_row_flush()
+            self._schedule_dataset_row_flush_after(1 if force_all else DATA_TABLE_FLUSH_DELAY_MS)
 
     def clear_dataset_rows(self, *, clear_cache: bool = True) -> None:
         if self._dataset_row_flush_after_id is not None:
             self.after_cancel(self._dataset_row_flush_after_id)
             self._dataset_row_flush_after_id = None
         self._pending_dataset_rows.clear()
-        for item in self.data_tree.get_children():
-            self.data_tree.delete(item)
+        items = self.data_tree.get_children()
+        if items:
+            self.data_tree.delete(*items)
         if clear_cache:
             self._set_dataset_record_cache([])
             self._redraw_view()
@@ -1626,8 +1632,9 @@ class MagnetometerTab(ttk.Frame):
     def set_dataset_records(self, records: list[SampleRecord]) -> None:
         self._set_dataset_record_cache(records)
         self.clear_dataset_rows(clear_cache=False)
-        for row_id, record in enumerate(records, start=1):
-            self._insert_dataset_row(row_id, record)
+        self._pending_dataset_rows.extend((row_id, record) for row_id, record in enumerate(records, start=1))
+        if self._pending_dataset_rows:
+            self._flush_pending_dataset_rows(force_all=True)
         if records and self.view_option_vars["auto fit on load"].get():
             self._fit_radius = self._recommended_fit_radius()
             self._view_scale = 1.0
@@ -1895,18 +1902,25 @@ class MagnetometerTab(ttk.Frame):
                 continue
         return sorted(set(indices))
 
-    def append_log_line(self, line: str, tag: str | None = None) -> None:
+    def append_log_lines(self, entries: list[tuple[str, str | None]]) -> None:
+        if not entries:
+            return
         self.log_text.configure(state="normal")
-        if tag:
-            self.log_text.insert("end", line + "\n", (tag,))
-        else:
-            self.log_text.insert("end", line + "\n")
-        self._log_lines += 1
-        if self._log_lines > self._log_max_lines:
-            self.log_text.delete("1.0", "2.0")
-            self._log_lines -= 1
+        for line, tag in entries:
+            if tag:
+                self.log_text.insert("end", line + "\n", (tag,))
+            else:
+                self.log_text.insert("end", line + "\n")
+        self._log_lines += len(entries)
+        overflow = self._log_lines - self._log_max_lines
+        if overflow > 0:
+            self.log_text.delete("1.0", f"{overflow + 1}.0")
+            self._log_lines -= overflow
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+
+    def append_log_line(self, line: str, tag: str | None = None) -> None:
+        self.append_log_lines([(line, tag)])
 
     def should_show_log(self, msg_type: str | None) -> bool:
         if not msg_type:

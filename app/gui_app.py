@@ -104,6 +104,12 @@ from runtime.socket_runtime import SocketExternalRuntime
 
 from log.parsed_logger import ParsedLogger
 
+RX_POLL_INTERVAL_MS = 20
+RX_POLL_BACKLOG_INTERVAL_MS = 1
+RX_EVENTS_PER_TICK = 120
+TAB_LOG_FLUSH_DELAY_MS = 40
+TAB_LOG_FLUSH_BATCH = 400
+
 class VirtualControllerApp:
     def __init__(self, *, fixed_route_canvases: bool = False) -> None:
         self.root = tk.Tk()
@@ -116,6 +122,8 @@ class VirtualControllerApp:
         self.worker = SerialWorker()
         self.worker.on_send = self._log_tx_raw
         self.logger = ParsedLogger()
+        self._pending_tab_logs: list[tuple[Any, str, str | None]] = []
+        self._tab_log_flush_after_id: str | None = None
 
         self.dev_cfg = DeviationConfig()
         self.geom_cfg = GeometryConfig()
@@ -130,6 +138,10 @@ class VirtualControllerApp:
             "plugin": "",
             "metrics": "",
         }
+        self._acc_saved_state: dict[str, Any] = {}
+        self._acc_file_dialog_dirs: dict[str, str] = {"dataset": "", "params": "", "plugin": "", "metrics": ""}
+        self._gyro_saved_state: dict[str, Any] = {}
+        self._gyro_file_dialog_dirs: dict[str, str] = {"dataset": "", "params": "", "plugin": "", "metrics": ""}
         self._load_settings()
 
         # Time sync state
@@ -195,8 +207,6 @@ class VirtualControllerApp:
         self._acc_calibration_stream_snapshots: dict[str, LatestStreamSnapshot] = {}
         self._acc_primary_output_stream_id = "raw_tilt"
         self._acc_last_live_snapshot: dict[str, Any] | None = None
-        self._acc_saved_state: dict[str, Any] = {}
-        self._acc_file_dialog_dirs: dict[str, str] = {"dataset": "", "params": "", "plugin": "", "metrics": ""}
         self._acc_last_dataset_ui_refresh_s = 0.0
         self._gyro_datasets: list[GyroscopeDataset] = []
         self._gyro_dataset: Optional[GyroscopeDataset] = None
@@ -212,8 +222,6 @@ class VirtualControllerApp:
         self._gyro_calibration_stream_snapshots: dict[str, LatestStreamSnapshot] = {}
         self._gyro_primary_output_stream_id = "raw_gyroscope"
         self._gyro_last_live_snapshot: dict[str, Any] | None = None
-        self._gyro_saved_state: dict[str, Any] = {}
-        self._gyro_file_dialog_dirs: dict[str, str] = {"dataset": "", "params": "", "plugin": "", "metrics": ""}
         self._gyro_last_dataset_ui_refresh_s = 0.0
         self._set_manual_command_quantum_ms(self._manual_cfg["command_quantum_ms"], persist=False)
 
@@ -234,7 +242,7 @@ class VirtualControllerApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_exit)
 
         # periodic queue polling
-        self.root.after(20, self._poll_rx)
+        self.root.after(RX_POLL_INTERVAL_MS, self._poll_rx)
 
     def run(self) -> None:
         try:
@@ -679,6 +687,13 @@ class VirtualControllerApp:
         if self._is_shutting_down:
             return
         self._is_shutting_down = True
+        flush_after_id = getattr(self, "_tab_log_flush_after_id", None)
+        if flush_after_id is not None:
+            try:
+                self.root.after_cancel(flush_after_id)
+            except Exception:
+                pass
+            self._tab_log_flush_after_id = None
         self._save_settings()
         self._shutdown_external_runtime()
         try:
@@ -1237,11 +1252,13 @@ class VirtualControllerApp:
         self._poll_sensor_calibration_jobs("gyro")
 
         # handle RX queue
-        while True:
+        processed_events = 0
+        while processed_events < RX_EVENTS_PER_TICK:
             try:
                 ev = self.worker.rx_queue.get_nowait()
             except Exception:
                 break
+            processed_events += 1
 
             if isinstance(ev, RxError):
                 self._rx_ok.append(False)
@@ -1363,7 +1380,14 @@ class VirtualControllerApp:
         self._poll_sensor_calibration_jobs("acc")
         self._poll_sensor_calibration_jobs("gyro")
         if not self._is_shutting_down:
-            self.root.after(20, self._poll_rx)
+            has_backlog = False
+            if processed_events >= RX_EVENTS_PER_TICK:
+                try:
+                    has_backlog = not self.worker.rx_queue.empty()
+                except Exception:
+                    has_backlog = True
+            next_delay_ms = RX_POLL_BACKLOG_INTERVAL_MS if has_backlog else RX_POLL_INTERVAL_MS
+            self.root.after(next_delay_ms, self._poll_rx)
 
     # ---------------- Settings persistence ----------------
 
@@ -1708,10 +1732,49 @@ class VirtualControllerApp:
                 tabs.append(tab)
         return tuple(tabs)
 
+    def _ensure_tab_log_buffer_state(self) -> None:
+        if not hasattr(self, "_pending_tab_logs"):
+            self._pending_tab_logs = []
+        if not hasattr(self, "_tab_log_flush_after_id"):
+            self._tab_log_flush_after_id = None
+
+    def _schedule_tab_log_flush(self, delay_ms: int = TAB_LOG_FLUSH_DELAY_MS) -> None:
+        self._ensure_tab_log_buffer_state()
+        if getattr(self, "_is_shutting_down", False) or self._tab_log_flush_after_id is not None:
+            return
+        self._tab_log_flush_after_id = self.root.after(delay_ms, self._flush_pending_tab_logs)
+
+    def _flush_pending_tab_logs(self) -> None:
+        self._ensure_tab_log_buffer_state()
+        self._tab_log_flush_after_id = None
+        if getattr(self, "_is_shutting_down", False) or not self._pending_tab_logs:
+            return
+        batch_size = min(TAB_LOG_FLUSH_BATCH, len(self._pending_tab_logs))
+        batch = self._pending_tab_logs[:batch_size]
+        del self._pending_tab_logs[:batch_size]
+        grouped: dict[Any, list[tuple[str, str | None]]] = collections.defaultdict(list)
+        for tab, line, tag in batch:
+            grouped[tab].append((line, tag))
+        for tab, entries in grouped.items():
+            try:
+                append_many = getattr(tab, "append_log_lines", None)
+                if callable(append_many):
+                    append_many(entries)
+                else:
+                    for line, tag in entries:
+                        tab.append_log_line(line, tag=tag)
+            except Exception:
+                continue
+        if self._pending_tab_logs:
+            self._schedule_tab_log_flush(delay_ms=1)
+
     def _append_log_to_tabs(self, line: str, msg_type: str | None, tag: str | None = None) -> None:
+        self._ensure_tab_log_buffer_state()
         for tab in self._iter_log_tabs():
             if tab.should_show_log(msg_type):
-                tab.append_log_line(line, tag=tag)
+                self._pending_tab_logs.append((tab, line, tag))
+        if self._pending_tab_logs:
+            self._schedule_tab_log_flush()
 
     def _estimate_pc_event_ms_from_mcu(self, timestamp_mcu_ms: int) -> Optional[int]:
         if not self.time_model.have_lock:

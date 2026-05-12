@@ -14,7 +14,7 @@ from app.gui_app import VirtualControllerApp
 from app.magnetometer_dataset import Dataset, SampleRecord
 from app.magnetometer_plugin_loader import CalibrationRunResult, LoadedMethodPlugin, ParamIoResult, PluginDiagnostics
 from app.manual_tab import ManualControlState
-from comm.serial_worker import RxEvent
+from comm.serial_worker import RxError, RxEvent
 from comm.protocol import (
     Frame,
     ImuData,
@@ -305,6 +305,64 @@ class GuiControlRoutingTests(unittest.TestCase):
         self.assertEqual(len(scheduled), 1)
         self.assertEqual(scheduled[0][0], 20)
         self.assertTrue(any("rx-handler:ImuData" in line for line, _msg_type, _tag in log_lines))
+
+    def test_poll_rx_limits_work_per_tick_when_queue_has_backlog(self) -> None:
+        import app.gui_app as gui_app_module
+
+        app = object.__new__(VirtualControllerApp)
+        scheduled: list[tuple[int, object]] = []
+        app._is_shutting_down = False
+        app.worker = types.SimpleNamespace(rx_queue=queue.Queue())
+        for index in range(gui_app_module.RX_EVENTS_PER_TICK + 5):
+            app.worker.rx_queue.put(RxError(pc_rx_ms=1000 + index, error="noise"))
+        app._send_control_if_due = lambda _now_ms: None
+        app._kick_sync_if_due = lambda _now_ms: None
+        app._poll_magnetometer_calibration_jobs = lambda: None
+        app._poll_sensor_calibration_jobs = lambda _sensor: None
+        app._rx_ok = collections.deque(maxlen=64)
+        app.radio_var = types.SimpleNamespace(set=lambda _value: None)
+        app._quality_0_10 = lambda: 10
+        app._update_mcu_time_label = lambda: None
+        app._update_uart_status = lambda: None
+        app.root = types.SimpleNamespace(after=lambda delay, callback: scheduled.append((delay, callback)))
+
+        VirtualControllerApp._poll_rx(app)
+
+        self.assertEqual(app.worker.rx_queue.qsize(), 5)
+        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(scheduled[0][0], gui_app_module.RX_POLL_BACKLOG_INTERVAL_MS)
+
+    def test_append_log_to_tabs_batches_lines_per_tab(self) -> None:
+        class _DummyLogTab:
+            def __init__(self) -> None:
+                self.received: list[tuple[str, str | None]] = []
+
+            def should_show_log(self, _msg_type: str | None) -> bool:
+                return True
+
+            def append_log_lines(self, entries: list[tuple[str, str | None]]) -> None:
+                self.received.extend(entries)
+
+        app = object.__new__(VirtualControllerApp)
+        scheduled: list[tuple[int, object]] = []
+        app._is_shutting_down = False
+        app.root = types.SimpleNamespace(after=lambda delay, callback: scheduled.append((delay, callback)) or "after#1")
+        app.manual_tab = _DummyLogTab()
+        app.coord_tab = None
+        app.magnetometer_tab = None
+        app.accelerometer_tab = None
+        app.gyroscope_tab = None
+
+        VirtualControllerApp._append_log_to_tabs(app, "line-1", "imu")
+        VirtualControllerApp._append_log_to_tabs(app, "line-2", "imu", tag="tx")
+
+        self.assertEqual(len(scheduled), 1)
+        scheduled[0][1]()
+
+        self.assertEqual(
+            app.manual_tab.received,
+            [("line-1", None), ("line-2", "tx")],
+        )
 
     def test_handle_motor_pid_response_updates_manual_fields(self) -> None:
         app = object.__new__(VirtualControllerApp)
