@@ -588,6 +588,7 @@ class GyroscopeTab(MagnetometerTab):
                 record.flags,
             ),
         )
+        self._note_dataset_row_inserted()
 
     def set_metrics_report(self, *, rows: list[dict[str, str]], summary_text: str, can_export: bool) -> None:
         del rows, summary_text, can_export

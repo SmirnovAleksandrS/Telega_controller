@@ -91,6 +91,8 @@ POSE_SOURCE_ALIASES: dict[str, PoseSourceMode] = {
     "External estimator": PoseSourceMode.EXTERNAL,
 }
 
+LOG_TRIM_CHUNK = 100
+
 AUTOPILOT_LABELS: dict[AutopilotMode, str] = {
     AutopilotMode.BUILTIN_PURE_PURSUIT: "Built-in Pure Pursuit",
     AutopilotMode.EXTERNAL: "External autopilot",
@@ -2257,8 +2259,9 @@ class CoordinateTab(ttk.Frame):
         self._log_lines += len(entries)
         overflow = self._log_lines - self._log_max_lines
         if overflow > 0:
-            self.log_text.delete("1.0", f"{overflow + 1}.0")
-            self._log_lines -= overflow
+            trim_count = max(overflow, min(LOG_TRIM_CHUNK, self._log_lines))
+            self.log_text.delete("1.0", f"{trim_count + 1}.0")
+            self._log_lines -= trim_count
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 

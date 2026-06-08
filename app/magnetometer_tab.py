@@ -20,6 +20,7 @@ PROJECTION_MODES = (PROJECTION_3D, PROJECTION_XY, PROJECTION_XZ, PROJECTION_YZ)
 BUILTIN_SOURCE_DEFS = (
     ("raw_magnetometer", "Raw Magnetometer", "Built-in source"),
     ("raw_heading", "Raw Heading", "Built-in source"),
+    ("gnss_heading", "GNSS Heading", "Built-in source"),
 )
 
 _ISO_X = 0.8660254037844386
@@ -28,10 +29,14 @@ DEFAULT_3D_YAW_DEG = 45.0
 DEFAULT_3D_PITCH_DEG = 35.0
 MAX_CLOUD_POINTS = 900
 MIN_CLOUD_POINTS_PER_STREAM = 120
+DATA_CLOUD_PREVIEW_MAX_RECORDS_PER_STREAM = MAX_CLOUD_POINTS
 LIVE_REDRAW_INTERVAL_S = 1.0 / 24.0
 DATA_TABLE_FLUSH_DELAY_MS = 80
 DATA_TABLE_FLUSH_BATCH = 240
 DATA_TABLE_FORCE_FLUSH_BATCH = DATA_TABLE_FLUSH_BATCH * 4
+DATA_TABLE_MAX_VISIBLE_ROWS = 500
+DATA_TABLE_TRIM_CHUNK = 100
+LOG_TRIM_CHUNK = 100
 
 
 def compute_raw_heading_deg(mx: float, my: float) -> float | None:
@@ -165,6 +170,10 @@ class MagnetometerTab(ttk.Frame):
         self._filter_desc: dict[str, str] = {}
         self._menu_tooltip: _MenuTooltip | None = None
         self._current_heading_deg: float | None = None
+        self._current_gnss_heading_deg: float | None = None
+        self._current_gnss_pitch_deg: float | None = None
+        self._current_gnss_heading_stddev: float | None = None
+        self._current_gnss_pitch_stddev: float | None = None
         self._current_mag_vector: tuple[float, float, float] | None = None
         self._projection_mode = PROJECTION_XY
         self._projection_buttons: dict[str, ttk.Button] = {}
@@ -179,9 +188,13 @@ class MagnetometerTab(ttk.Frame):
         self._view_rotation_pitch_deg = DEFAULT_3D_PITCH_DEG
         self._recording_active = False
         self._dataset_row_count = 0
+        self._data_tree_visible_rows = 0
         self._dataset_choice_labels: list[str] = []
         self._dataset_records: list[SampleRecord] = []
         self._dataset_records_by_stream: dict[str, list[SampleRecord]] = {}
+        self._dataset_cloud_records_by_stream: dict[str, list[SampleRecord]] = {}
+        self._dataset_cloud_seen_by_stream: dict[str, int] = {}
+        self._dataset_cloud_stride_by_stream: dict[str, int] = {}
         self._dataset_cloud_max_radius = 1.0
         self._method_dataset_clouds: dict[str, list[SampleRecord]] = {}
         self._method_dataset_cloud_max_radius = 1.0
@@ -332,6 +345,16 @@ class MagnetometerTab(ttk.Frame):
         self._build_output_routing_section(self.control_frame).grid(row=4, column=0, sticky="ew", pady=(8, 0))
         bind_vertical_mousewheel_tree(self.control_frame, target=self.control_canvas)
 
+    def _can_redraw_live_view(self, *, first_sample: bool = False) -> bool:
+        if not bool(self.winfo_viewable()):
+            return False
+        now = time.monotonic()
+        min_interval = 0.0 if first_sample else LIVE_REDRAW_INTERVAL_S
+        if (now - self._last_live_redraw_s) < min_interval:
+            return False
+        self._last_live_redraw_s = now
+        return True
+
     def _build_bottom_notebook(self) -> None:
         self.bottom_nb = ttk.Notebook(self)
         self.bottom_nb.grid(row=1, column=0, columnspan=3, sticky="nsew")
@@ -354,6 +377,12 @@ class MagnetometerTab(ttk.Frame):
             "mz",
             "|m|",
             "raw heading",
+            "GNSS MCU ts",
+            "GNSS unix time",
+            "GNSS heading",
+            "GNSS pitch",
+            "GNSS hdg stddev",
+            "GNSS pitch stddev",
             "selected output heading",
             "selected source",
             "dataset status",
@@ -394,6 +423,7 @@ class MagnetometerTab(ttk.Frame):
                 "show corrected points",
                 "show current point",
                 "show raw heading",
+                "show GNSS heading",
                 "show derived headings",
                 "auto fit on load",
             } else "disabled"
@@ -768,11 +798,14 @@ class MagnetometerTab(ttk.Frame):
         self._redraw_view()
 
     def set_method_dataset_clouds(self, method_clouds: dict[str, list[SampleRecord]]) -> None:
-        self._method_dataset_clouds = {
-            method_id: list(records)
-            for method_id, records in method_clouds.items()
-        }
-        self._recompute_method_cloud_max_radius()
+        self._method_dataset_clouds = {}
+        radius = 1.0
+        for method_id, records in method_clouds.items():
+            record_list = list(records)
+            self._method_dataset_clouds[method_id] = self._cloud_preview_records(record_list)
+            for record in record_list:
+                radius = max(radius, self._record_radius(record))
+        self._method_dataset_cloud_max_radius = radius
         if self.auto_fit_var.get():
             self._sync_auto_fit_radius()
         self._redraw_view()
@@ -1110,12 +1143,39 @@ class MagnetometerTab(ttk.Frame):
             pitch_deg=self._view_rotation_pitch_deg,
         )
 
+    def _is_cloud_record(self, record: SampleRecord) -> bool:
+        return "heading_only" not in (record.flags or "")
+
+    def _reset_dataset_cloud_preview_cache(self) -> None:
+        self._dataset_cloud_records_by_stream = {}
+        self._dataset_cloud_seen_by_stream = {}
+        self._dataset_cloud_stride_by_stream = {}
+
+    def _append_dataset_cloud_preview_record(self, record: SampleRecord) -> None:
+        if not self._is_cloud_record(record):
+            return
+        stream_id = str(record.stream_id)
+        seen = self._dataset_cloud_seen_by_stream.get(stream_id, 0) + 1
+        self._dataset_cloud_seen_by_stream[stream_id] = seen
+        stride = max(1, self._dataset_cloud_stride_by_stream.get(stream_id, 1))
+        records = self._dataset_cloud_records_by_stream.setdefault(stream_id, [])
+        if seen % stride != 0:
+            return
+        records.append(record)
+        if len(records) <= DATA_CLOUD_PREVIEW_MAX_RECORDS_PER_STREAM:
+            return
+        records[:] = records[::2]
+        self._dataset_cloud_stride_by_stream[stream_id] = stride * 2
+
+    def _cloud_preview_records(self, records: list[SampleRecord]) -> list[SampleRecord]:
+        cloud_records = [record for record in records if self._is_cloud_record(record)]
+        if len(cloud_records) <= DATA_CLOUD_PREVIEW_MAX_RECORDS_PER_STREAM:
+            return cloud_records
+        step = max(1, math.ceil(len(cloud_records) / DATA_CLOUD_PREVIEW_MAX_RECORDS_PER_STREAM))
+        return cloud_records[::step]
+
     def _raw_cloud_records(self) -> list[SampleRecord]:
-        return [
-            record
-            for record in self._dataset_records_by_stream.get("raw_magnetometer", [])
-            if "heading_only" not in (record.flags or "")
-        ]
+        return self._dataset_cloud_records_by_stream.get("raw_magnetometer", [])
 
     def _iter_visible_dataset_clouds(self) -> list[dict[str, object]]:
         clouds: list[dict[str, object]] = []
@@ -1134,7 +1194,7 @@ class MagnetometerTab(ttk.Frame):
                 card = self._method_cards.get(method_id)
                 if card is None or not card.show_var.get():
                     continue
-                records = self._dataset_records_by_stream.get(stream_id, [])
+                records = self._dataset_cloud_records_by_stream.get(stream_id, [])
                 if not records:
                     records = self._method_dataset_clouds.get(method_id, [])
                 if not records:
@@ -1200,6 +1260,11 @@ class MagnetometerTab(ttk.Frame):
             })
         return visible
 
+    @staticmethod
+    def _heading_to_xy_target(heading_deg: float, radius: float) -> tuple[float, float]:
+        heading_rad = math.radians(heading_deg)
+        return (math.sin(heading_rad) * radius, math.cos(heading_rad) * radius)
+
     def _draw_heading_vector_xy(self, _radius: float) -> None:
         if (
             self._current_heading_deg is None
@@ -1212,6 +1277,20 @@ class MagnetometerTab(ttk.Frame):
         vx0, vy0 = self._scene_to_view((0.0, 0.0))
         vx1, vy1 = self._scene_to_view(target)
         self.view_canvas.create_line(vx0, vy0, vx1, vy1, fill="#1f6aa5", width=3, arrow="last")
+
+    def _draw_gnss_heading_vector_xy(self, radius: float) -> None:
+        gnss_card = self._source_cards.get("gnss_heading")
+        if (
+            self._current_gnss_heading_deg is None
+            or not self.view_option_vars["show GNSS heading"].get()
+            or gnss_card is None
+            or not gnss_card.show_var.get()
+        ):
+            return
+        target = self._heading_to_xy_target(self._current_gnss_heading_deg, radius * 0.88)
+        vx0, vy0 = self._scene_to_view((0.0, 0.0))
+        vx1, vy1 = self._scene_to_view(target)
+        self.view_canvas.create_line(vx0, vy0, vx1, vy1, fill="#7a3db8", width=3, dash=(5, 3), arrow="last")
 
     def _draw_derived_heading_vectors_xy(self, _radius: float) -> None:
         if not self.view_option_vars["show derived headings"].get():
@@ -1249,7 +1328,22 @@ class MagnetometerTab(ttk.Frame):
         self.view_canvas.create_text(*self._scene_to_view((0.0, -radius)), text="-Z", fill="#000000")
 
     def _draw_heading_inset(self) -> None:
-        if self._current_heading_deg is None or not self._source_cards["raw_heading"].show_var.get():
+        raw_card = self._source_cards.get("raw_heading")
+        show_raw = (
+            self._current_heading_deg is not None
+            and raw_card is not None
+            and raw_card.show_var.get()
+            and self.view_option_vars["show raw heading"].get()
+        )
+        gnss_card = self._source_cards.get("gnss_heading")
+        show_gnss = (
+            self._current_gnss_heading_deg is not None
+            and gnss_card is not None
+            and gnss_card.show_var.get()
+            and self.view_option_vars["show GNSS heading"].get()
+        )
+        show_derived = self.view_option_vars["show derived headings"].get() and bool(self._iter_visible_derived_streams())
+        if not show_raw and not show_gnss and not show_derived:
             return
         width, _height = self._canvas_dimensions()
         cx = width - 72.0
@@ -1261,10 +1355,16 @@ class MagnetometerTab(ttk.Frame):
         canvas.create_text(cx, cy + radius + 10, text="S", fill="#000000")
         canvas.create_text(cx - radius - 10, cy, text="W", fill="#000000")
         canvas.create_text(cx + radius + 10, cy, text="E", fill="#000000")
-        heading_rad = math.radians(self._current_heading_deg)
-        dx = math.sin(heading_rad) * radius * 0.82
-        dy = -math.cos(heading_rad) * radius * 0.82
-        canvas.create_line(cx, cy, cx + dx, cy + dy, fill="#1f6aa5", width=3, arrow="last")
+        if show_raw:
+            heading_rad = math.radians(self._current_heading_deg or 0.0)
+            dx = math.sin(heading_rad) * radius * 0.82
+            dy = -math.cos(heading_rad) * radius * 0.82
+            canvas.create_line(cx, cy, cx + dx, cy + dy, fill="#1f6aa5", width=3, arrow="last")
+        if show_gnss:
+            heading_rad = math.radians(self._current_gnss_heading_deg)
+            dx = math.sin(heading_rad) * radius * 0.88
+            dy = -math.cos(heading_rad) * radius * 0.88
+            canvas.create_line(cx, cy, cx + dx, cy + dy, fill="#7a3db8", width=3, dash=(5, 3), arrow="last")
         if self.view_option_vars["show derived headings"].get():
             for stream in self._iter_visible_derived_streams():
                 heading = stream.get("heading")
@@ -1304,6 +1404,17 @@ class MagnetometerTab(ttk.Frame):
             origin = self._scene_to_view((0.0, 0.0))
             vx1, vy1 = self._scene_to_view(self._project_scene_point(heading_end[0], heading_end[1], 0.0, projection=PROJECTION_3D))
             self.view_canvas.create_line(origin[0], origin[1], vx1, vy1, fill="#1f6aa5", width=3, arrow="last")
+        gnss_card = self._source_cards.get("gnss_heading")
+        if (
+            self._current_gnss_heading_deg is not None
+            and self.view_option_vars["show GNSS heading"].get()
+            and gnss_card is not None
+            and gnss_card.show_var.get()
+        ):
+            heading_end = self._heading_to_xy_target(self._current_gnss_heading_deg, radius * 0.88)
+            origin = self._scene_to_view((0.0, 0.0))
+            vx1, vy1 = self._scene_to_view(self._project_scene_point(heading_end[0], heading_end[1], 0.0, projection=PROJECTION_3D))
+            self.view_canvas.create_line(origin[0], origin[1], vx1, vy1, fill="#7a3db8", width=3, dash=(5, 3), arrow="last")
         if self.view_option_vars["show derived headings"].get():
             for stream in self._iter_visible_derived_streams():
                 heading_end = (float(stream["mx"]), float(stream["my"]))
@@ -1326,6 +1437,7 @@ class MagnetometerTab(ttk.Frame):
         self.view_canvas.create_text(*self._scene_to_view((radius * 1.05, -radius * 0.95)), text="-Z", fill="#000000")
         self._draw_dataset_clouds(PROJECTION_XY)
         self._draw_heading_vector_xy(radius)
+        self._draw_gnss_heading_vector_xy(radius)
         self._draw_derived_heading_vectors_xy(radius)
         if (
             self._current_mag_vector is not None
@@ -1362,6 +1474,13 @@ class MagnetometerTab(ttk.Frame):
         items: list[tuple[str, str]] = []
         if self.view_option_vars["show raw heading"].get() and self._source_cards["raw_heading"].show_var.get():
             items.append(("Raw Heading", "#1f6aa5"))
+        gnss_card = self._source_cards.get("gnss_heading")
+        if (
+            self.view_option_vars["show GNSS heading"].get()
+            and gnss_card is not None
+            and gnss_card.show_var.get()
+        ):
+            items.append(("GNSS Heading", "#7a3db8"))
         if self.view_option_vars["show derived headings"].get():
             for stream in self._iter_visible_derived_streams():
                 items.append((str(stream["title"]), str(stream["color"])))
@@ -1451,14 +1570,45 @@ class MagnetometerTab(ttk.Frame):
             for method_id, stream_state in (derived_streams or {}).items()
         }
         self._update_heading_stream_summary()
-        if first_sample and self.auto_fit_var.get():
-            self._sync_auto_fit_radius()
-        elif self.auto_fit_var.get():
-            self._sync_auto_fit_radius()
 
-        now = time.monotonic()
-        if first_sample or (now - self._last_live_redraw_s) >= LIVE_REDRAW_INTERVAL_S:
-            self._last_live_redraw_s = now
+        should_redraw = self._can_redraw_live_view(first_sample=first_sample)
+        if should_redraw and self.auto_fit_var.get():
+            self._sync_auto_fit_radius()
+        if should_redraw:
+            self._redraw_view()
+
+    def update_gnss_heading(
+        self,
+        *,
+        timestamp_mcu: int,
+        timestamp_pc_rx: int,
+        timestamp_pc_est: int | None,
+        unix_time: int,
+        heading: float | None,
+        pitch: float | None,
+        heading_stddev: float | None,
+        pitch_stddev: float | None,
+        selected_output_heading: float | None = None,
+        selected_source_label: str | None = None,
+    ) -> None:
+        del timestamp_pc_rx, timestamp_pc_est
+        self.current_data_vars["GNSS MCU ts"].set(str(timestamp_mcu))
+        self.current_data_vars["GNSS unix time"].set(str(unix_time))
+        self.current_data_vars["GNSS heading"].set("—" if heading is None else f"{heading:.1f}°")
+        self.current_data_vars["GNSS pitch"].set("—" if pitch is None else f"{pitch:.2f}°")
+        self.current_data_vars["GNSS hdg stddev"].set("—" if heading_stddev is None else f"{heading_stddev:.3g}")
+        self.current_data_vars["GNSS pitch stddev"].set("—" if pitch_stddev is None else f"{pitch_stddev:.3g}")
+        self._current_gnss_heading_deg = heading
+        self._current_gnss_pitch_deg = pitch
+        self._current_gnss_heading_stddev = heading_stddev
+        self._current_gnss_pitch_stddev = pitch_stddev
+        if selected_source_label is not None:
+            self.set_primary_output_display(
+                heading=selected_output_heading,
+                source_label=selected_source_label,
+            )
+        self._update_heading_stream_summary()
+        if self._can_redraw_live_view():
             self._redraw_view()
 
     def set_recording_state(
@@ -1484,7 +1634,7 @@ class MagnetometerTab(ttk.Frame):
         else:
             self.start_record_btn.state(["!disabled"])
             self.stop_record_btn.state(["disabled"])
-            self._flush_pending_dataset_rows(force_all=True)
+            self._queue_dataset_table_preview()
             self.load_csv_btn.state(["!disabled"])
             self.load_multiple_btn.state(["!disabled"])
             if can_save:
@@ -1565,8 +1715,10 @@ class MagnetometerTab(ttk.Frame):
     def _set_dataset_record_cache(self, records: list[SampleRecord]) -> None:
         self._dataset_records = list(records)
         self._dataset_records_by_stream = {}
+        self._reset_dataset_cloud_preview_cache()
         for record in self._dataset_records:
             self._dataset_records_by_stream.setdefault(record.stream_id, []).append(record)
+            self._append_dataset_cloud_preview_record(record)
         self._recompute_dataset_cloud_max_radius()
 
     def _insert_dataset_row(self, row_id: int, record: SampleRecord) -> None:
@@ -1590,6 +1742,20 @@ class MagnetometerTab(ttk.Frame):
                 record.flags,
             ),
         )
+        self._note_dataset_row_inserted()
+
+    def _note_dataset_row_inserted(self) -> None:
+        self._data_tree_visible_rows += 1
+        overflow = self._data_tree_visible_rows - DATA_TABLE_MAX_VISIBLE_ROWS
+        if overflow <= 0:
+            return
+        trim_count = max(overflow, min(DATA_TABLE_TRIM_CHUNK, self._data_tree_visible_rows))
+        items = self.data_tree.get_children()
+        if not items:
+            return
+        delete_items = items[:trim_count]
+        self.data_tree.delete(*delete_items)
+        self._data_tree_visible_rows -= len(delete_items)
 
     def _is_data_tab_visible(self) -> bool:
         return getattr(self, "data_tab_frame", None) is not None and self.bottom_nb.select() == str(self.data_tab_frame)
@@ -1608,6 +1774,8 @@ class MagnetometerTab(ttk.Frame):
             return
         if self._recording_active and not force_all and not self._is_data_tab_visible():
             return
+        if len(self._pending_dataset_rows) > DATA_TABLE_MAX_VISIBLE_ROWS:
+            del self._pending_dataset_rows[:len(self._pending_dataset_rows) - DATA_TABLE_MAX_VISIBLE_ROWS]
         batch_limit = DATA_TABLE_FORCE_FLUSH_BATCH if force_all else DATA_TABLE_FLUSH_BATCH
         batch_size = min(batch_limit, len(self._pending_dataset_rows))
         batch = self._pending_dataset_rows[:batch_size]
@@ -1617,6 +1785,17 @@ class MagnetometerTab(ttk.Frame):
         if self._pending_dataset_rows:
             self._schedule_dataset_row_flush_after(1 if force_all else DATA_TABLE_FLUSH_DELAY_MS)
 
+    def _queue_dataset_table_preview(self) -> None:
+        self.clear_dataset_rows(clear_cache=False)
+        total_records = len(self._dataset_records)
+        start_index = max(0, total_records - DATA_TABLE_MAX_VISIBLE_ROWS)
+        self._pending_dataset_rows.extend(
+            (row_id, record)
+            for row_id, record in enumerate(self._dataset_records[start_index:], start=start_index + 1)
+        )
+        if self._pending_dataset_rows:
+            self._flush_pending_dataset_rows(force_all=True)
+
     def clear_dataset_rows(self, *, clear_cache: bool = True) -> None:
         if self._dataset_row_flush_after_id is not None:
             self.after_cancel(self._dataset_row_flush_after_id)
@@ -1625,6 +1804,7 @@ class MagnetometerTab(ttk.Frame):
         items = self.data_tree.get_children()
         if items:
             self.data_tree.delete(*items)
+        self._data_tree_visible_rows = 0
         if clear_cache:
             self._set_dataset_record_cache([])
             self._redraw_view()
@@ -1632,7 +1812,11 @@ class MagnetometerTab(ttk.Frame):
     def set_dataset_records(self, records: list[SampleRecord]) -> None:
         self._set_dataset_record_cache(records)
         self.clear_dataset_rows(clear_cache=False)
-        self._pending_dataset_rows.extend((row_id, record) for row_id, record in enumerate(records, start=1))
+        start_index = max(0, len(records) - DATA_TABLE_MAX_VISIBLE_ROWS)
+        self._pending_dataset_rows.extend(
+            (row_id, record)
+            for row_id, record in enumerate(records[start_index:], start=start_index + 1)
+        )
         if self._pending_dataset_rows:
             self._flush_pending_dataset_rows(force_all=True)
         if records and self.view_option_vars["auto fit on load"].get():
@@ -1644,7 +1828,10 @@ class MagnetometerTab(ttk.Frame):
     def append_dataset_record(self, row_id: int, record: SampleRecord) -> None:
         self._dataset_records.append(record)
         self._dataset_records_by_stream.setdefault(record.stream_id, []).append(record)
+        self._append_dataset_cloud_preview_record(record)
         self._dataset_cloud_max_radius = max(self._dataset_cloud_max_radius, self._record_radius(record))
+        if self._recording_active and not self._is_data_tab_visible():
+            return
         self._pending_dataset_rows.append((row_id, record))
         if not self._recording_active or self._is_data_tab_visible():
             self._schedule_dataset_row_flush()
@@ -1868,7 +2055,7 @@ class MagnetometerTab(ttk.Frame):
 
     def _handle_bottom_tab_change(self, _event: tk.Event) -> None:
         if self._is_data_tab_visible():
-            self._flush_pending_dataset_rows(force_all=True)
+            self._queue_dataset_table_preview()
 
     def _handle_export_metrics(self) -> None:
         if self._on_export_metrics is not None:
@@ -1882,6 +2069,12 @@ class MagnetometerTab(ttk.Frame):
             and self.view_option_vars["show raw heading"].get()
         ):
             visible_names.append("Raw Heading")
+        if (
+            self._source_cards.get("gnss_heading") is not None
+            and self._source_cards["gnss_heading"].show_var.get()
+            and self.view_option_vars["show GNSS heading"].get()
+        ):
+            visible_names.append("GNSS Heading")
         if self.view_option_vars["show derived headings"].get():
             for method_id, stream in self._derived_streams.items():
                 if not bool(stream.get("show", False)):
@@ -1914,8 +2107,9 @@ class MagnetometerTab(ttk.Frame):
         self._log_lines += len(entries)
         overflow = self._log_lines - self._log_max_lines
         if overflow > 0:
-            self.log_text.delete("1.0", f"{overflow + 1}.0")
-            self._log_lines -= overflow
+            trim_count = max(overflow, min(LOG_TRIM_CHUNK, self._log_lines))
+            self.log_text.delete("1.0", f"{trim_count + 1}.0")
+            self._log_lines -= trim_count
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
@@ -1951,6 +2145,7 @@ class MagnetometerTab(ttk.Frame):
             ("D1", "D1 - tacho RPM"),
             ("D2", "D2 - motor currents/voltage/temp"),
             ("D3", "D3 - sensor tensor data"),
+            ("D4", "D4 - raw GNSS data"),
         ])
         add_group("E: Errors", [("E0", "E0 - error code")])
         add_group("F: Responses", [("F0", "F0 - sync response"), ("F1", "F1 - motor PID response")])

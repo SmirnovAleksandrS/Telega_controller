@@ -7,10 +7,12 @@ from comm.protocol import (
     TYPE_D1_TACHO,
     TYPE_D2_MOTOR,
     TYPE_D3_SENSOR_TENSOR,
+    TYPE_D4_RAW_GNSS,
     TYPE_F1_PID_RESP,
     Frame,
     MotorPidData,
     MotorData,
+    RawGnssData,
     SensorTensorData,
     StreamParser,
     TachoData,
@@ -78,6 +80,20 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(parsed.angular_velocity, (4.0, 5.0, 6.0))
         self.assertEqual(parsed.linear_quality, (7.0, 8.0, 9.0))
         self.assertEqual(parsed.angular_quality, (10.0, 11.0, 12.0))
+
+    def test_raw_gnss_data_parses_d4_payload(self) -> None:
+        payload = struct.pack("<IQffff", 88, 1_774_000_001, 123.5, -2.25, 0.3, 0.4)
+
+        parsed = parse_frame(Frame(msg_type=TYPE_D4_RAW_GNSS, payload=payload))
+
+        self.assertIsInstance(parsed, RawGnssData)
+        assert isinstance(parsed, RawGnssData)
+        self.assertEqual(parsed.ts_ms, 88)
+        self.assertEqual(parsed.unix_time, 1_774_000_001)
+        self.assertAlmostEqual(parsed.heading, 123.5)
+        self.assertAlmostEqual(parsed.pitch, -2.25)
+        self.assertAlmostEqual(parsed.heading_stddev, 0.3)
+        self.assertAlmostEqual(parsed.pitch_stddev, 0.4)
 
     def test_motor_pid_response_parses_f1_payload(self) -> None:
         payload = struct.pack("<6f", 1.0, 0.1, 0.01, 2.0, 0.2, 0.02)

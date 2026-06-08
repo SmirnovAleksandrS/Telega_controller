@@ -14,9 +14,8 @@ import time
 import traceback
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from dataclasses import asdict
 import struct
-from typing import Optional, Any, Sequence
+from typing import Optional, Any, Callable, Sequence
 import collections
 import json
 import os
@@ -40,7 +39,7 @@ from app.accelerometer_dataset import AccelerometerDataset, AccelerometerSampleR
 from app.accelerometer_tab import compute_accelerometer_tilt_deg
 from app.gyroscope_dataset import GyroscopeDataset, GyroscopeSampleRecord
 from app.gyroscope_tab import compute_gyro_rate_magnitude
-from app.imu_dataset import ImuDataset, ImuSampleRecord
+from app.imu_dataset import ImuCsvStreamWriter, ImuDataset, ImuSampleRecord
 from app.manual_tab import ManualTab
 from app.magnetometer_dataset import Dataset, SampleRecord
 from app.magnetometer_metrics import MetricsReport, compute_metrics_report
@@ -82,7 +81,7 @@ from comm.protocol import (
     TYPE_D0_IMU, TYPE_D1_TACHO,
     TYPE_B0_SYNC_REQ, TYPE_B1_PID_REQ, TYPE_C0_CONTROL, TYPE_A0_DISABLE_D, TYPE_A1_ENABLE_D, TYPE_A2_SET_PID,
     SOF, Frame, parse_frame,
-    ImuData, TachoData, MotorData, SensorTensorData, SyncResp, MotorPidData
+    ImuData, TachoData, MotorData, SensorTensorData, RawGnssData, SyncResp, MotorPidData
 )
 from comm.time_sync import TimeModel, compute_sync_point, control_timestamp_u32, estimate_initial, update_model, SyncPoint
 from utils.timebase import now_ms_monotonic, u32
@@ -105,10 +104,19 @@ from runtime.socket_runtime import SocketExternalRuntime
 from log.parsed_logger import ParsedLogger
 
 RX_POLL_INTERVAL_MS = 20
-RX_POLL_BACKLOG_INTERVAL_MS = 1
+RX_POLL_BACKLOG_INTERVAL_MS = 4
 RX_EVENTS_PER_TICK = 120
+RX_PROCESS_TIME_BUDGET_S = 0.006
 TAB_LOG_FLUSH_DELAY_MS = 40
-TAB_LOG_FLUSH_BATCH = 400
+TAB_LOG_FLUSH_BATCH = 120
+TAB_LOG_MAX_PENDING = 3000
+HIGH_RATE_MSG_TYPES = {"D0"}
+HIGH_RATE_TAB_LOG_INTERVAL_S = 0.5
+HIGH_RATE_CONSOLE_INTERVAL_S = 0.25
+SENSOR_LIVE_UI_INTERVAL_S = 1.0 / 12.0
+MCU_TIME_UI_INTERVAL_S = 0.1
+RADIO_UI_INTERVAL_S = 0.25
+DATASET_UI_REFRESH_INTERVAL_S = 1.0
 
 class VirtualControllerApp:
     def __init__(self, *, fixed_route_canvases: bool = False) -> None:
@@ -187,11 +195,14 @@ class VirtualControllerApp:
         self._mag_last_live_snapshot: dict[str, Any] | None = None
         self._mag_metrics_report: MetricsReport | None = None
         self._mag_last_dataset_ui_refresh_s = 0.0
-        self._mag_dataset_ui_refresh_interval_s = 0.2
+        self._mag_dataset_ui_refresh_interval_s = DATASET_UI_REFRESH_INTERVAL_S
+        self._mag_last_live_ui_update_s = 0.0
         self._imu_datasets: list[ImuDataset] = []
         self._imu_dataset: Optional[ImuDataset] = None
         self._imu_recording_active = False
         self._imu_dataset_export_path: str = ""
+        self._imu_stream_writer: ImuCsvStreamWriter | None = None
+        self._imu_stream_error_reported = False
         self._acc_datasets: list[AccelerometerDataset] = []
         self._acc_dataset: Optional[AccelerometerDataset] = None
         self._acc_recording_active = False
@@ -208,6 +219,7 @@ class VirtualControllerApp:
         self._acc_primary_output_stream_id = "raw_tilt"
         self._acc_last_live_snapshot: dict[str, Any] | None = None
         self._acc_last_dataset_ui_refresh_s = 0.0
+        self._acc_last_live_ui_update_s = 0.0
         self._gyro_datasets: list[GyroscopeDataset] = []
         self._gyro_dataset: Optional[GyroscopeDataset] = None
         self._gyro_recording_active = False
@@ -223,6 +235,12 @@ class VirtualControllerApp:
         self._gyro_primary_output_stream_id = "raw_gyroscope"
         self._gyro_last_live_snapshot: dict[str, Any] | None = None
         self._gyro_last_dataset_ui_refresh_s = 0.0
+        self._gyro_last_live_ui_update_s = 0.0
+        self._sensor_dataset_ui_refresh_interval_s = DATASET_UI_REFRESH_INTERVAL_S
+        self._tab_log_last_emit_s_by_type: dict[str, float] = {}
+        self._console_last_emit_s_by_type: dict[str, float] = {}
+        self._last_mcu_time_ui_update_s = 0.0
+        self._last_radio_ui_update_s = 0.0
         self._set_manual_command_quantum_ms(self._manual_cfg["command_quantum_ms"], persist=False)
 
         # Radio quality (simple heuristic)
@@ -233,6 +251,7 @@ class VirtualControllerApp:
         self._last_tacho: Optional[TachoData] = None
         self._last_motor: Optional[MotorData] = None
         self._last_d3: Optional[SensorTensorData] = None
+        self._last_gnss: Optional[RawGnssData] = None
         self._coord_mission: Optional[MissionConfig] = None
         self._external_runtime: Optional[ExternalRuntimeBridge] = None
         self._last_external_command: Optional[DriveCommand] = None
@@ -458,7 +477,8 @@ class VirtualControllerApp:
         menubar = tk.Menu(self.root)
 
         menu_files = tk.Menu(menubar, tearoff=0)
-        menu_files.add_command(label="Log path", command=self._choose_log_path)
+        menu_files.add_command(label="Select log file", command=self._choose_log_path)
+        menu_files.add_command(label="Start logging to file...", command=self._start_logging_to_file)
         menu_files.add_command(label="Start logging", command=self._start_logging)
         menu_files.add_command(label="Stop logging", command=self._stop_logging)
         menu_files.add_separator()
@@ -495,8 +515,10 @@ class VirtualControllerApp:
         self.test_mode_chk.pack(side="left", padx=(8, 0))
 
         self.log_status_var = tk.StringVar(value="Log Stopped")
-        self.log_status_lbl = ttk.Label(top, textvariable=self.log_status_var)
+        self.log_status_lbl = tk.Label(top, textvariable=self.log_status_var, bg=PANEL_BG)
         self.log_status_lbl.pack(side="right")
+        self.log_file_btn = ttk.Button(top, text="Log File...", command=self._start_logging_to_file)
+        self.log_file_btn.pack(side="right", padx=(0, 8))
         self._apply_log_status_style()
         self._refresh_connect_btn()
 
@@ -569,7 +591,7 @@ class VirtualControllerApp:
             parent = self.log_status_lbl.master
             self.log_status_lbl.destroy()
             self.log_status_lbl = tk.Label(parent, textvariable=self.log_status_var, bg=PANEL_BG)
-            self.log_status_lbl.pack(anchor="ne")
+            self.log_status_lbl.pack(side="right")
         is_run = self.logger.is_running
         self.log_status_lbl.configure(fg=STATUS_GREEN if is_run else STATUS_RED)
 
@@ -610,29 +632,49 @@ class VirtualControllerApp:
 
     # ---------------- Menu actions ----------------
 
-    def _choose_log_path(self) -> None:
+    def _choose_log_path(self) -> str | None:
+        dialog_kwargs: dict[str, object] = {}
+        if self._log_path:
+            initialdir = os.path.dirname(self._log_path)
+            if initialdir:
+                dialog_kwargs["initialdir"] = initialdir
         path = filedialog.asksaveasfilename(
             title="Select log file",
             defaultextension=".log",
             filetypes=[("Log files", "*.log"), ("All files", "*.*")],
             parent=self.root,
+            **dialog_kwargs,
         )
         if path:
             self._log_path = path
+            return path
+        return None
 
-    def _start_logging(self) -> None:
-        if self.logger.is_running:
+    def _start_logging_to_file(self) -> None:
+        path = self._choose_log_path()
+        if path:
+            self._start_logging(path)
+
+    def _start_logging(self, path: str | None = None) -> None:
+        if path:
+            self._log_path = path
+            if self.logger.is_running:
+                self.logger.stop()
+        elif self.logger.is_running:
             return
         if not self._log_path:
-            self._choose_log_path()
-            if not self._log_path:
+            path = self._choose_log_path()
+            if not path:
                 return
         try:
             self.logger.start(self._log_path)
         except Exception as e:
+            self.log_status_var.set("Log Stopped")
+            self._apply_log_status_style()
             self._show_error("Logging", f"Failed to start log: {e}")
             return
-        self.log_status_var.set("Log Running")
+        filename = os.path.basename(self._log_path) if self._log_path else ""
+        self.log_status_var.set(f"Log Running: {filename}" if filename else "Log Running")
         self._apply_log_status_style()
 
     def _stop_logging(self) -> None:
@@ -699,6 +741,7 @@ class VirtualControllerApp:
         try:
             self.worker.close()
         finally:
+            self._close_imu_stream_writer()
             self.logger.stop()
             try:
                 self.root.quit()
@@ -1253,7 +1296,8 @@ class VirtualControllerApp:
 
         # handle RX queue
         processed_events = 0
-        while processed_events < RX_EVENTS_PER_TICK:
+        processing_deadline_s = time.monotonic() + RX_PROCESS_TIME_BUDGET_S
+        while processed_events < RX_EVENTS_PER_TICK and time.monotonic() < processing_deadline_s:
             try:
                 ev = self.worker.rx_queue.get_nowait()
             except Exception:
@@ -1263,33 +1307,36 @@ class VirtualControllerApp:
             if isinstance(ev, RxError):
                 self._rx_ok.append(False)
                 # show only rarely to avoid spam
-                self.radio_var.set(f"Radio Quality: {self._quality_0_10()}/10")
+                self._update_radio_quality_if_due()
                 continue
 
             if isinstance(ev, RxEvent):
                 self._rx_ok.append(True)
-                self.radio_var.set(f"Radio Quality: {self._quality_0_10()}/10")
+                self._update_radio_quality_if_due()
 
                 parsed = ev.parsed
 
-                # log parsed (console always, file when enabled)
-                log_obj = {
-                    "pc_rx_ms": ev.pc_rx_ms,
-                    "msg": self._msg_to_dict(parsed),
-                    "time_model": {"a": self.time_model.a, "b": self.time_model.b, "lock": self.time_model.have_lock}
-                }
-                if isinstance(parsed, (ImuData, TachoData, MotorData, SensorTensorData)):
-                    log_obj["rx_time"] = parsed.ts_ms
+                # log parsed (file gets every line; high-rate UI/console output is sampled)
+                msg_type = self._parsed_msg_type(parsed)
+                write_file_log = bool(self.logger.is_running)
+                emit_console_log = self._should_emit_console_line(msg_type)
+                emit_tab_log = self._should_emit_tab_log_line(msg_type)
                 try:
-                    line = self.logger.format_line(log_obj)
-                    print(line, flush=True)
-                    msg_type = None
-                    msg = log_obj.get("msg")
-                    if isinstance(msg, dict):
-                        msg_type = msg.get("type")
-                    self._append_log_to_tabs(line, msg_type)
-                    if self.logger.is_running:
-                        self.logger.write_line(line)
+                    if write_file_log or emit_console_log or emit_tab_log:
+                        log_obj = {
+                            "pc_rx_ms": ev.pc_rx_ms,
+                            "msg": self._msg_to_dict(parsed),
+                            "time_model": {"a": self.time_model.a, "b": self.time_model.b, "lock": self.time_model.have_lock}
+                        }
+                        if isinstance(parsed, (ImuData, TachoData, MotorData, SensorTensorData, RawGnssData)):
+                            log_obj["rx_time"] = parsed.ts_ms
+                        line = self.logger.format_line(log_obj)
+                        if write_file_log:
+                            self.logger.write_line(line)
+                        if emit_console_log:
+                            print(line)
+                        if emit_tab_log:
+                            self._append_log_to_tabs(line, msg_type)
                 except Exception:
                     pass
 
@@ -1331,6 +1378,11 @@ class VirtualControllerApp:
                             },
                         )
                         self._update_mcu_time_label()
+                    elif isinstance(parsed, RawGnssData):
+                        self._last_gnss = parsed
+                        self._last_mcu_ts_u32 = parsed.ts_ms
+                        self._update_magnetometer_gnss_view(parsed, ev.pc_rx_ms)
+                        self._update_mcu_time_label_if_due()
                     elif isinstance(parsed, SyncResp):
                         self._handle_sync_resp(parsed, ev.pc_rx_ms)
                     elif isinstance(parsed, MotorPidData):
@@ -1338,7 +1390,7 @@ class VirtualControllerApp:
                     elif isinstance(parsed, (ImuData, TachoData)):
                         self._last_mcu_ts_u32 = parsed.ts_ms
                         # could be extended later
-                        self._update_mcu_time_label()
+                        self._update_mcu_time_label_if_due()
                     if isinstance(parsed, ImuData):
                         self._last_imu = parsed
                         self._update_magnetometer_live_view(parsed, ev.pc_rx_ms)
@@ -1362,30 +1414,29 @@ class VirtualControllerApp:
                         self.coord_tab.add_actual_tacho(parsed.left_rpm, parsed.right_rpm, parsed.ts_ms)
                         # External runtime treats the incoming speed sample as the main processing trigger.
                         self._ingest_external_runtime_snapshot(self.build_telemetry_snapshot(ev.pc_rx_ms))
-                    elif not isinstance(parsed, (MotorData, SensorTensorData, SyncResp, MotorPidData, ImuData)):
+                    elif not isinstance(parsed, (MotorData, SensorTensorData, RawGnssData, SyncResp, MotorPidData, ImuData)):
                         # unknown Frame - ignore
                         pass
                 except Exception as exc:
                     error_line = f"[rx-handler:{type(parsed).__name__}] {type(exc).__name__}: {exc}"
                     try:
-                        print(error_line, flush=True)
+                        print(error_line)
                         self._append_log_to_tabs(error_line, "error")
                     except Exception:
                         pass
                     traceback.print_exc()
 
-        self._update_mcu_time_label()
+        self._update_mcu_time_label_if_due()
         self._update_uart_status()
         self._poll_magnetometer_calibration_jobs()
         self._poll_sensor_calibration_jobs("acc")
         self._poll_sensor_calibration_jobs("gyro")
         if not self._is_shutting_down:
             has_backlog = False
-            if processed_events >= RX_EVENTS_PER_TICK:
-                try:
-                    has_backlog = not self.worker.rx_queue.empty()
-                except Exception:
-                    has_backlog = True
+            try:
+                has_backlog = not self.worker.rx_queue.empty()
+            except Exception:
+                has_backlog = processed_events >= RX_EVENTS_PER_TICK
             next_delay_ms = RX_POLL_BACKLOG_INTERVAL_MS if has_backlog else RX_POLL_INTERVAL_MS
             self.root.after(next_delay_ms, self._poll_rx)
 
@@ -1666,11 +1717,11 @@ class VirtualControllerApp:
         }
         try:
             line = self.logger.format_line(log_obj)
-            print(line, flush=True)
-            msg_type = msg.get("type")
-            self._append_log_to_tabs(line, msg_type, tag="tx")
             if self.logger.is_running:
                 self.logger.write_line(line)
+            print(line)
+            msg_type = msg.get("type")
+            self._append_log_to_tabs(line, msg_type, tag="tx")
         except Exception:
             pass
 
@@ -1768,11 +1819,111 @@ class VirtualControllerApp:
         if self._pending_tab_logs:
             self._schedule_tab_log_flush(delay_ms=1)
 
+    @staticmethod
+    def _tab_is_viewable(tab: Any) -> bool:
+        winfo_viewable = getattr(tab, "winfo_viewable", None)
+        if not callable(winfo_viewable):
+            return True
+        try:
+            return bool(winfo_viewable())
+        except Exception:
+            return True
+
+    def _should_update_sensor_live_ui(self, sensor: str, tab: Any, *, force: bool = False) -> bool:
+        if not self._tab_is_viewable(tab):
+            return False
+        attr_name = f"_{sensor}_last_live_ui_update_s"
+        now_s = time.monotonic()
+        last_s = float(getattr(self, attr_name, 0.0))
+        if force or (now_s - last_s) >= SENSOR_LIVE_UI_INTERVAL_S:
+            setattr(self, attr_name, now_s)
+            return True
+        return False
+
+    def _has_active_magnetometer_realtime_methods(self) -> bool:
+        methods = getattr(self, "_mag_methods", {})
+        return any(bool(getattr(plugin, "realtime_enabled", False)) for plugin in methods.values())
+
+    def _has_active_sensor_realtime_methods(self, sensor: str) -> bool:
+        methods = getattr(self, "_acc_methods" if sensor == "acc" else "_gyro_methods", {})
+        return any(bool(getattr(plugin, "realtime_enabled", False)) for plugin in methods.values())
+
+    def _should_emit_interval_line(
+        self,
+        *,
+        attr_name: str,
+        msg_type: str | None,
+        interval_s: float,
+    ) -> bool:
+        if msg_type not in HIGH_RATE_MSG_TYPES:
+            return True
+        now_s = time.monotonic()
+        last_by_type = getattr(self, attr_name, None)
+        if not isinstance(last_by_type, dict):
+            last_by_type = {}
+            setattr(self, attr_name, last_by_type)
+        last_s = float(last_by_type.get(str(msg_type), 0.0))
+        if (now_s - last_s) < interval_s:
+            return False
+        last_by_type[str(msg_type)] = now_s
+        return True
+
+    def _should_emit_console_line(self, msg_type: str | None) -> bool:
+        return self._should_emit_interval_line(
+            attr_name="_console_last_emit_s_by_type",
+            msg_type=msg_type,
+            interval_s=HIGH_RATE_CONSOLE_INTERVAL_S,
+        )
+
+    def _should_emit_tab_log_line(self, msg_type: str | None) -> bool:
+        return self._should_emit_interval_line(
+            attr_name="_tab_log_last_emit_s_by_type",
+            msg_type=msg_type,
+            interval_s=HIGH_RATE_TAB_LOG_INTERVAL_S,
+        )
+
+    def _update_radio_quality_if_due(self, *, force: bool = False) -> None:
+        now_s = time.monotonic()
+        last_s = float(getattr(self, "_last_radio_ui_update_s", 0.0))
+        if not force and (now_s - last_s) < RADIO_UI_INTERVAL_S:
+            return
+        self._last_radio_ui_update_s = now_s
+        self.radio_var.set(f"Radio Quality: {self._quality_0_10()}/10")
+
+    def _update_mcu_time_label_if_due(self, *, force: bool = False) -> None:
+        now_s = time.monotonic()
+        last_s = float(getattr(self, "_last_mcu_time_ui_update_s", 0.0))
+        if not force and (now_s - last_s) < MCU_TIME_UI_INTERVAL_S:
+            return
+        self._last_mcu_time_ui_update_s = now_s
+        self._update_mcu_time_label()
+
+    @staticmethod
+    def _parsed_msg_type(msg: Any) -> str | None:
+        if isinstance(msg, ImuData):
+            return "D0"
+        if isinstance(msg, TachoData):
+            return "D1"
+        if isinstance(msg, MotorData):
+            return "D2"
+        if isinstance(msg, SensorTensorData):
+            return "D3"
+        if isinstance(msg, RawGnssData):
+            return "D4"
+        if isinstance(msg, SyncResp):
+            return "F0"
+        if isinstance(msg, MotorPidData):
+            return "F1"
+        return "unknown" if isinstance(msg, Frame) else None
+
     def _append_log_to_tabs(self, line: str, msg_type: str | None, tag: str | None = None) -> None:
         self._ensure_tab_log_buffer_state()
         for tab in self._iter_log_tabs():
             if tab.should_show_log(msg_type):
                 self._pending_tab_logs.append((tab, line, tag))
+        overflow = len(self._pending_tab_logs) - TAB_LOG_MAX_PENDING
+        if overflow > 0:
+            del self._pending_tab_logs[:overflow]
         if self._pending_tab_logs:
             self._schedule_tab_log_flush()
 
@@ -1781,15 +1932,120 @@ class VirtualControllerApp:
             return None
         return int(round(self.time_model.pc_from_mcu(timestamp_mcu_ms)))
 
+    @staticmethod
+    def _finite_float_or_none(value: object) -> float | None:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    def _last_gnss_heading_deg(self) -> float | None:
+        snapshot = getattr(self, "_mag_last_live_snapshot", None)
+        if isinstance(snapshot, dict):
+            heading = self._finite_float_or_none(snapshot.get("gnss_heading"))
+            if heading is not None:
+                return heading
+        gnss = getattr(self, "_last_gnss", None)
+        if gnss is None:
+            return None
+        heading = self._finite_float_or_none(gnss.heading)
+        return None if heading is None else heading % 360.0
+
+    def _update_magnetometer_gnss_view(self, gnss: RawGnssData, pc_rx_ms: int) -> None:
+        timestamp_pc_est = self._estimate_pc_event_ms_from_mcu(gnss.ts_ms)
+        heading = self._finite_float_or_none(gnss.heading)
+        if heading is not None:
+            heading = heading % 360.0
+        pitch = self._finite_float_or_none(gnss.pitch)
+        heading_stddev = self._finite_float_or_none(gnss.heading_stddev)
+        pitch_stddev = self._finite_float_or_none(gnss.pitch_stddev)
+        sample = {
+            "timestamp_mcu": gnss.ts_ms,
+            "timestamp_pc_rx": pc_rx_ms,
+            "timestamp_pc_est": timestamp_pc_est,
+            "unix_time": gnss.unix_time,
+            "heading": heading,
+            "pitch": pitch,
+            "heading_stddev": heading_stddev,
+            "pitch_stddev": pitch_stddev,
+            "stream_id": "gnss_heading",
+            "stream_type": "reference",
+            "producer_name": "GNSS Heading",
+            "producer_version": "builtin",
+            "flags": "heading_only",
+        }
+        self._publish_calibration_stream_snapshot(
+            make_builtin_producer_id("gnss_heading"),
+            "heading.deg",
+            sample,
+        )
+        self._record_magnetometer_gnss_heading(
+            timestamp_mcu=gnss.ts_ms,
+            timestamp_pc_rx=pc_rx_ms,
+            timestamp_pc_est=timestamp_pc_est,
+            heading=heading,
+        )
+        if not isinstance(getattr(self, "_mag_last_live_snapshot", None), dict):
+            self._mag_last_live_snapshot = {}
+        self._mag_last_live_snapshot.update(
+            {
+                "gnss_timestamp_mcu": gnss.ts_ms,
+                "gnss_timestamp_pc_rx": pc_rx_ms,
+                "gnss_timestamp_pc_est": timestamp_pc_est,
+                "gnss_unix_time": gnss.unix_time,
+                "gnss_heading": heading,
+                "gnss_pitch": pitch,
+                "gnss_heading_stddev": heading_stddev,
+                "gnss_pitch_stddev": pitch_stddev,
+            }
+        )
+        self._refresh_magnetometer_heading_routing_ui()
+        selected_heading, selected_source_label = self._resolve_magnetometer_selected_output(
+            self._mag_last_live_snapshot.get("raw_heading"),
+            self._mag_last_live_snapshot.get("derived_streams", {}),
+        )
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is not None and callable(getattr(magnetometer_tab, "update_gnss_heading", None)):
+            magnetometer_tab.update_gnss_heading(
+                timestamp_mcu=gnss.ts_ms,
+                timestamp_pc_rx=pc_rx_ms,
+                timestamp_pc_est=timestamp_pc_est,
+                unix_time=gnss.unix_time,
+                heading=heading,
+                pitch=pitch,
+                heading_stddev=heading_stddev,
+                pitch_stddev=pitch_stddev,
+                selected_output_heading=selected_heading,
+                selected_source_label=selected_source_label,
+            )
+
     def _update_magnetometer_live_view(self, imu: ImuData, pc_rx_ms: int) -> None:
         magnetometer_tab = getattr(self, "magnetometer_tab", None)
         if magnetometer_tab is None:
             return
+        first_live_ui_sample = self._mag_last_live_snapshot is None
         timestamp_pc_est = self._estimate_pc_event_ms_from_mcu(imu.ts_ms)
         mx = float(imu.magn[0])
         my = float(imu.magn[1])
         mz = float(imu.magn[2])
         raw_heading = compute_raw_heading_deg(mx, my)
+        ui_update_due = self._should_update_sensor_live_ui("mag", magnetometer_tab, force=first_live_ui_sample)
+        recording_needed = bool(getattr(self, "_mag_recording_active", False) or getattr(self, "_imu_recording_active", False))
+        realtime_needed = self._has_active_magnetometer_realtime_methods()
+        if not ui_update_due and not recording_needed and not realtime_needed:
+            self._mag_last_live_snapshot = {
+                "timestamp_mcu": imu.ts_ms,
+                "timestamp_pc_rx": pc_rx_ms,
+                "timestamp_pc_est": timestamp_pc_est,
+                "mx": mx,
+                "my": my,
+                "mz": mz,
+                "raw_heading": raw_heading,
+                "gnss_heading": self._last_gnss_heading_deg(),
+                "derived_streams": dict(getattr(self, "_mag_latest_derived_streams", {})),
+            }
+            return
         raw_sample = self._build_magnetometer_process_sample(
             timestamp_mcu=imu.ts_ms,
             timestamp_pc_rx=pc_rx_ms,
@@ -1852,6 +2108,7 @@ class VirtualControllerApp:
             mx=mx,
             my=my,
             mz=mz,
+            heading=raw_heading,
             derived_records=derived_records,
         )
         self._mag_last_live_snapshot = {
@@ -1862,8 +2119,11 @@ class VirtualControllerApp:
             "my": my,
             "mz": mz,
             "raw_heading": raw_heading,
+            "gnss_heading": self._last_gnss_heading_deg(),
             "derived_streams": dict(derived_streams),
         }
+        if not ui_update_due:
+            return
         self._refresh_magnetometer_heading_routing_ui()
         selected_heading, selected_source_label = self._resolve_magnetometer_selected_output(raw_heading, derived_streams)
         magnetometer_tab.update_live_imu(
@@ -2030,6 +2290,8 @@ class VirtualControllerApp:
         raw_sample: dict[str, Any],
     ) -> tuple[dict[str, dict[str, Any]], list[SampleRecord]]:
         self._ensure_magnetometer_method_state()
+        if not any(plugin.realtime_enabled for plugin in self._mag_methods.values()):
+            return ({}, [])
         self._update_magnetometer_method_routing_state()
         derived_streams: dict[str, dict[str, Any]] = {}
         derived_records: list[SampleRecord] = []
@@ -2122,6 +2384,8 @@ class VirtualControllerApp:
         primary_stream_id = self._mag_primary_heading_stream_id
         if primary_stream_id == "raw_heading":
             return (raw_heading, "Raw Heading")
+        if primary_stream_id == "gnss_heading":
+            return (self._last_gnss_heading_deg(), "GNSS Heading")
 
         plugin = self._mag_methods.get(primary_stream_id)
         if plugin is None:
@@ -2152,11 +2416,19 @@ class VirtualControllerApp:
                 "show": True,
                 "record": False,
             },
+            "gnss_heading": {
+                "title": "GNSS Heading",
+                "show": False,
+                "record": False,
+            },
         }
 
     def _ensure_magnetometer_source_state(self) -> None:
         if not hasattr(self, "_mag_sources"):
             self._mag_sources = self._default_magnetometer_sources()
+        else:
+            for source_id, defaults in self._default_magnetometer_sources().items():
+                self._mag_sources.setdefault(source_id, dict(defaults))
         if not hasattr(self, "_mag_selected_source_id") or self._mag_selected_source_id not in self._mag_sources:
             self._mag_selected_source_id = next(iter(self._mag_sources))
 
@@ -2236,6 +2508,12 @@ class VirtualControllerApp:
         active_dataset = getattr(self, "_mag_dataset", None) if dataset is None else dataset
         if active_dataset is None:
             return False
+        has_stream = getattr(active_dataset, "has_stream", None)
+        if callable(has_stream):
+            try:
+                return bool(has_stream(stream_id))
+            except Exception:
+                pass
         return any(record.stream_id == stream_id for record in active_dataset.records)
 
     def _builtin_calibration_producers(self, dataset: Dataset | None = None) -> dict[str, StreamProducerDescriptor]:
@@ -2247,6 +2525,10 @@ class VirtualControllerApp:
         tacho_active = make_builtin_producer_id("tacho_pair") in self._calibration_stream_snapshots
         motor_active = make_builtin_producer_id("motor_telemetry") in self._calibration_stream_snapshots
         tensor_active = make_builtin_producer_id("sensor_tensor_telemetry") in self._calibration_stream_snapshots
+        gnss_active = (
+            make_builtin_producer_id("gnss_heading") in self._calibration_stream_snapshots
+            or self._dataset_has_stream("gnss_heading", active_dataset)
+        )
         return {
             make_builtin_producer_id("raw_magnetometer"): StreamProducerDescriptor(
                 producer_id=make_builtin_producer_id("raw_magnetometer"),
@@ -2267,6 +2549,16 @@ class VirtualControllerApp:
                 origin="builtin",
                 active=raw_heading_active,
                 details={"source": "built-in atan2(mx, my)"},
+            ),
+            make_builtin_producer_id("gnss_heading"): StreamProducerDescriptor(
+                producer_id=make_builtin_producer_id("gnss_heading"),
+                kind="heading.deg",
+                title="GNSS Heading",
+                stream_id="gnss_heading",
+                stream_type="reference",
+                origin="builtin",
+                active=gnss_active,
+                details={"source": "D4.heading"},
             ),
             make_builtin_producer_id("imu_accel"): StreamProducerDescriptor(
                 producer_id=make_builtin_producer_id("imu_accel"),
@@ -2537,6 +2829,8 @@ class VirtualControllerApp:
         if producer.stream_id == "raw_heading":
             records = [record for record in dataset.records if record.stream_id == "raw_heading"]
             return records if records else self._raw_magnetometer_dataset_records(dataset)
+        if producer.stream_id == "gnss_heading":
+            return [record for record in dataset.records if record.stream_id == "gnss_heading"]
         return []
 
     def _build_process_sample_from_inputs(
@@ -2968,6 +3262,13 @@ class VirtualControllerApp:
     def _available_magnetometer_heading_streams(self) -> list[tuple[str, str]]:
         self._ensure_magnetometer_method_state()
         streams: list[tuple[str, str]] = [("raw_heading", "Raw Heading")]
+        if (
+            self._mag_primary_heading_stream_id == "gnss_heading"
+            or getattr(self, "_last_gnss", None) is not None
+            or make_builtin_producer_id("gnss_heading") in self._calibration_stream_snapshots
+            or self._dataset_has_stream("gnss_heading")
+        ):
+            streams.append(("gnss_heading", "GNSS Heading"))
         for method_id, plugin in self._mag_methods.items():
             if plugin.realtime_enabled or plugin.last_output is not None:
                 streams.append((method_id, plugin.name))
@@ -2982,10 +3283,13 @@ class VirtualControllerApp:
         available_ids = {stream_id for stream_id, _ in stream_choices}
         if self._mag_primary_heading_stream_id not in available_ids:
             self._mag_primary_heading_stream_id = "raw_heading"
-        magnetometer_tab.set_heading_routing(
-            stream_choices=stream_choices,
-            primary_stream_id=self._mag_primary_heading_stream_id,
-        )
+        routing_key = (tuple(stream_choices), self._mag_primary_heading_stream_id)
+        if getattr(self, "_mag_heading_routing_ui_key", None) != routing_key:
+            magnetometer_tab.set_heading_routing(
+                stream_choices=stream_choices,
+                primary_stream_id=self._mag_primary_heading_stream_id,
+            )
+            self._mag_heading_routing_ui_key = routing_key
         if self._mag_last_live_snapshot is not None:
             selected_heading, selected_source_label = self._resolve_magnetometer_selected_output(
                 self._mag_last_live_snapshot.get("raw_heading"),
@@ -3076,7 +3380,7 @@ class VirtualControllerApp:
         if not hasattr(self, "_mag_last_dataset_ui_refresh_s"):
             self._mag_last_dataset_ui_refresh_s = 0.0
         if not hasattr(self, "_mag_dataset_ui_refresh_interval_s"):
-            self._mag_dataset_ui_refresh_interval_s = 0.2
+            self._mag_dataset_ui_refresh_interval_s = DATASET_UI_REFRESH_INTERVAL_S
         now = time.monotonic()
         if force or (now - self._mag_last_dataset_ui_refresh_s) >= self._mag_dataset_ui_refresh_interval_s:
             self._refresh_magnetometer_dataset_ui()
@@ -3090,6 +3394,10 @@ class VirtualControllerApp:
             self._imu_recording_active = False
         if not hasattr(self, "_imu_dataset_export_path"):
             self._imu_dataset_export_path = ""
+        if not hasattr(self, "_imu_stream_writer"):
+            self._imu_stream_writer = None
+        if not hasattr(self, "_imu_stream_error_reported"):
+            self._imu_stream_error_reported = False
         if not hasattr(self, "_mag_datasets"):
             self._mag_datasets = []
         if not hasattr(self, "_mag_dataset"):
@@ -3198,35 +3506,46 @@ class VirtualControllerApp:
         self._imu_dataset = shared_dataset
         self._imu_dataset_export_path = shared_dataset.source_path or ""
 
-        mag_dataset = shared_dataset.project_magnetometer_dataset()
-        acc_dataset = shared_dataset.project_accelerometer_dataset()
-        gyro_dataset = shared_dataset.project_gyroscope_dataset()
-        self._mag_datasets.append(mag_dataset)
-        self._acc_datasets.append(acc_dataset)
-        self._gyro_datasets.append(gyro_dataset)
+        mag_dataset = self._find_or_create_shared_projection_dataset(
+            self._mag_datasets,
+            shared_dataset,
+            shared_dataset.project_magnetometer_dataset,
+        )
+        acc_dataset = self._find_or_create_shared_projection_dataset(
+            self._acc_datasets,
+            shared_dataset,
+            shared_dataset.project_accelerometer_dataset,
+        )
+        gyro_dataset = self._find_or_create_shared_projection_dataset(
+            self._gyro_datasets,
+            shared_dataset,
+            shared_dataset.project_gyroscope_dataset,
+        )
         self._set_active_magnetometer_dataset(mag_dataset)
         self._set_active_sensor_dataset("acc", acc_dataset)
         self._set_active_sensor_dataset("gyro", gyro_dataset)
+
+    def _find_or_create_shared_projection_dataset(
+        self,
+        collection: list[Any],
+        shared_dataset: ImuDataset,
+        make_projection: Callable[[], Any],
+    ) -> Any:
+        projection_key = (shared_dataset.source_path or "", shared_dataset.summary()["name"])
+        for dataset in collection:
+            if self._shared_projection_key(dataset) == projection_key:
+                self._update_projection_metadata_from_shared(shared_dataset, dataset)
+                return dataset
+        dataset = make_projection()
+        collection.append(dataset)
+        return dataset
 
     def _load_shared_imu_dataset_path(self, path: str) -> None:
         self._ensure_shared_imu_state()
         for shared_dataset in self._imu_datasets:
             if shared_dataset.source_path != path:
                 continue
-            self._imu_dataset = shared_dataset
-            for dataset in self._mag_datasets:
-                if self._shared_projection_key(dataset) == (path, shared_dataset.summary()["name"]):
-                    self._set_active_magnetometer_dataset(dataset)
-                    break
-            for dataset in self._acc_datasets:
-                if self._shared_projection_key(dataset) == (path, shared_dataset.summary()["name"]):
-                    self._set_active_sensor_dataset("acc", dataset)
-                    break
-            for dataset in self._gyro_datasets:
-                if self._shared_projection_key(dataset) == (path, shared_dataset.summary()["name"]):
-                    self._set_active_sensor_dataset("gyro", dataset)
-                    break
-            self._imu_dataset_export_path = path
+            self._activate_shared_imu_bundle(shared_dataset)
             return
         shared_dataset = ImuDataset.from_csv(path)
         self._activate_shared_imu_bundle(shared_dataset)
@@ -3287,7 +3606,41 @@ class VirtualControllerApp:
         self._ensure_shared_imu_state()
         if not self._imu_recording_active or self._imu_dataset is None:
             return
+        writer = getattr(self, "_imu_stream_writer", None)
+        if writer is not None:
+            try:
+                writer.append(record)
+                return
+            except Exception as exc:
+                self._close_imu_stream_writer()
+                if not getattr(self, "_imu_stream_error_reported", False):
+                    self._imu_stream_error_reported = True
+                    self._show_error("Sensors Record", f"Failed to write dataset stream: {exc}")
         self._imu_dataset.append(record)
+
+    def _close_imu_stream_writer(self) -> None:
+        writer = getattr(self, "_imu_stream_writer", None)
+        if writer is None:
+            return
+        try:
+            writer.close()
+        except Exception as exc:
+            if not getattr(self, "_imu_stream_error_reported", False):
+                self._imu_stream_error_reported = True
+                self._show_error("Sensors Record", f"Failed to write dataset stream: {exc}")
+        finally:
+            self._imu_stream_writer = None
+
+    def _start_imu_stream_writer(self, path: str, dataset: ImuDataset) -> bool:
+        self._close_imu_stream_writer()
+        self._imu_stream_error_reported = False
+        try:
+            self._imu_stream_writer = ImuCsvStreamWriter(path, metadata=dict(dataset.metadata))
+        except Exception as exc:
+            self._show_error("Sensors Record", f"Failed to open dataset stream: {exc}")
+            self._imu_stream_writer = None
+            return False
+        return True
 
     def _build_magnetometer_recording_metadata(self) -> dict[str, Any]:
         self._ensure_magnetometer_source_state()
@@ -3333,8 +3686,8 @@ class VirtualControllerApp:
                 "stream_id": source_id,
                 "kind": "source",
                 "title": str(source.get("title", source_id)),
-                "stream_type": "raw",
-                "flags": "heading_only" if source_id == "raw_heading" else "",
+                "stream_type": "reference" if source_id == "gnss_heading" else "raw",
+                "flags": "heading_only" if source_id in {"raw_heading", "gnss_heading"} else "",
             }
             for source_id, source in self._mag_sources.items()
             if bool(source.get("record", False))
@@ -3393,24 +3746,39 @@ class VirtualControllerApp:
         if self._imu_dataset is not None and (self._imu_recording_active or self._is_shared_projection_dataset(target_dataset)):
             self._update_imu_dataset_recording_metadata()
 
-    def _start_shared_imu_recording(self, *, requested_name: str | None = None) -> None:
+    def _start_shared_imu_recording(self, *, requested_name: str | None = None, export_path: str | None = None) -> bool:
         self._ensure_shared_imu_state()
         if self._imu_recording_active:
-            return
+            return False
         shared_dataset = ImuDataset(requested_name or self._make_imu_dataset_name())
+        if export_path:
+            shared_dataset.source_path = export_path
         self._imu_recording_active = True
         self._mag_recording_active = True
         self._acc_recording_active = True
         self._gyro_recording_active = True
         self._activate_shared_imu_bundle(shared_dataset)
-        self._imu_dataset_export_path = ""
+        self._imu_dataset_export_path = export_path or ""
         self._update_imu_dataset_recording_metadata(shared_dataset)
         self._update_magnetometer_dataset_recording_metadata(self._mag_dataset)
         self._update_sensor_dataset_recording_metadata("acc", self._acc_dataset)
         self._update_sensor_dataset_recording_metadata("gyro", self._gyro_dataset)
+        if export_path and not self._start_imu_stream_writer(export_path, shared_dataset):
+            self._imu_recording_active = False
+            self._mag_recording_active = False
+            self._acc_recording_active = False
+            self._gyro_recording_active = False
+            self._refresh_magnetometer_dataset_ui()
+            self._refresh_sensor_dataset_ui("acc")
+            self._refresh_sensor_dataset_ui("gyro")
+            return False
         self._refresh_magnetometer_dataset_ui()
         self._refresh_sensor_dataset_ui("acc")
         self._refresh_sensor_dataset_ui("gyro")
+        if export_path:
+            self._remember_dialog_dir("dataset", export_path)
+            self._save_settings()
+        return True
 
     def _stop_shared_imu_recording(self) -> None:
         self._ensure_shared_imu_state()
@@ -3420,6 +3788,7 @@ class VirtualControllerApp:
         self._mag_recording_active = False
         self._acc_recording_active = False
         self._gyro_recording_active = False
+        self._close_imu_stream_writer()
         self._update_imu_dataset_recording_metadata()
         self._update_magnetometer_dataset_recording_metadata()
         self._update_sensor_dataset_recording_metadata("acc")
@@ -3429,8 +3798,13 @@ class VirtualControllerApp:
         self._refresh_sensor_dataset_ui("gyro")
 
     def _on_magnetometer_start_record(self) -> None:
-        requested_name = self._make_magnetometer_dataset_name() if hasattr(self, "_make_magnetometer_dataset_name") else None
-        self._start_shared_imu_recording(requested_name=requested_name)
+        path = self._choose_magnetometer_dataset_path()
+        if not path:
+            return
+        requested_name = os.path.basename(path) if path else (
+            self._make_magnetometer_dataset_name() if hasattr(self, "_make_magnetometer_dataset_name") else None
+        )
+        self._start_shared_imu_recording(requested_name=requested_name, export_path=path)
 
     def _on_magnetometer_stop_record(self) -> None:
         self._stop_shared_imu_recording()
@@ -3444,12 +3818,14 @@ class VirtualControllerApp:
         mx: float,
         my: float,
         mz: float,
+        heading: float | None = None,
         derived_records: Sequence[SampleRecord] | None = None,
     ) -> None:
         self._ensure_magnetometer_source_state()
         if not self._mag_recording_active or self._mag_dataset is None:
             return
-        heading = compute_raw_heading_deg(mx, my)
+        if heading is None:
+            heading = compute_raw_heading_deg(mx, my)
         next_row_id = len(self._mag_dataset.records)
         magnetometer_tab = getattr(self, "magnetometer_tab", None)
         appended = False
@@ -3513,6 +3889,47 @@ class VirtualControllerApp:
 
         if not appended:
             return
+        self._refresh_magnetometer_dataset_ui_if_due(force=not self._mag_recording_active)
+
+    def _record_magnetometer_gnss_heading(
+        self,
+        *,
+        timestamp_mcu: int,
+        timestamp_pc_rx: int,
+        timestamp_pc_est: int | None,
+        heading: float | None,
+    ) -> None:
+        self._ensure_magnetometer_source_state()
+        if not self._mag_recording_active or self._mag_dataset is None:
+            return
+        shared_recording_active = bool(getattr(self, "_imu_recording_active", False))
+        record_gnss_local = bool(self._mag_sources["gnss_heading"]["record"])
+        if not record_gnss_local and not shared_recording_active:
+            return
+
+        record = SampleRecord(
+            stream_id="gnss_heading",
+            stream_type="reference",
+            producer_name="GNSS Heading",
+            producer_version="builtin",
+            timestamp_mcu=timestamp_mcu,
+            timestamp_pc_rx=timestamp_pc_rx,
+            timestamp_pc_est=timestamp_pc_est,
+            mag_x=0.0,
+            mag_y=0.0,
+            mag_z=0.0,
+            heading=heading,
+            flags="heading_only",
+        )
+        self._append_imu_shared_record(self._convert_magnetometer_record_to_imu(record))
+        if not record_gnss_local:
+            return
+
+        next_row_id = len(self._mag_dataset.records) + 1
+        self._mag_dataset.append(record)
+        magnetometer_tab = getattr(self, "magnetometer_tab", None)
+        if magnetometer_tab is not None:
+            magnetometer_tab.append_dataset_record(next_row_id, record)
         self._refresh_magnetometer_dataset_ui_if_due(force=not self._mag_recording_active)
 
     def _choose_magnetometer_dataset_load_path(self) -> str:
@@ -3627,6 +4044,8 @@ class VirtualControllerApp:
             try:
                 if ImuDataset.is_imu_csv(path):
                     self._load_shared_imu_dataset_path(path)
+                    if self._mag_dataset is None:
+                        raise ValueError("IMU CSV did not produce a magnetometer projection")
                     loaded.append(self._mag_dataset)
                     continue
                 dataset = Dataset.from_csv(path)
@@ -4555,6 +4974,12 @@ class VirtualControllerApp:
         active_dataset = getattr(self, f"{prefix}_dataset", None) if dataset is None else dataset
         if active_dataset is None:
             return False
+        has_stream = getattr(active_dataset, "has_stream", None)
+        if callable(has_stream):
+            try:
+                return bool(has_stream(stream_id))
+            except Exception:
+                pass
         return any(record.stream_id == stream_id for record in active_dataset.records)
 
     def _paired_sensor_dataset_for_calibration(self, sensor: str, target_sensor: str, dataset: Any | None) -> Any | None:
@@ -5200,8 +5625,10 @@ class VirtualControllerApp:
         raw_sample: dict[str, Any],
     ) -> tuple[dict[str, dict[str, Any]], list[Any]]:
         self._ensure_sensor_method_state(sensor)
-        self._update_sensor_method_routing_state(sensor)
         methods: dict[str, LoadedMethodPlugin] = getattr(self, "_acc_methods" if sensor == "acc" else "_gyro_methods")
+        if not any(plugin.realtime_enabled for plugin in methods.values()):
+            return ({}, [])
+        self._update_sensor_method_routing_state(sensor)
         latest_derived = getattr(self, "_acc_latest_derived_streams" if sensor == "acc" else "_gyro_latest_derived_streams")
         derived_streams: dict[str, dict[str, Any]] = {}
         derived_records: list[Any] = []
@@ -5413,10 +5840,14 @@ class VirtualControllerApp:
         primary_attr = f"{prefix}_primary_output_stream_id"
         if getattr(self, primary_attr) not in available_ids:
             setattr(self, primary_attr, self._sensor_primary_raw_stream_id(sensor))
-        tab.set_heading_routing(
-            stream_choices=stream_choices,
-            primary_stream_id=getattr(self, primary_attr),
-        )
+        routing_key = (tuple(stream_choices), getattr(self, primary_attr))
+        cache_attr = f"{prefix}_output_routing_ui_key"
+        if getattr(self, cache_attr, None) != routing_key:
+            tab.set_heading_routing(
+                stream_choices=stream_choices,
+                primary_stream_id=getattr(self, primary_attr),
+            )
+            setattr(self, cache_attr, routing_key)
         snapshot = getattr(self, f"{prefix}_last_live_snapshot")
         if snapshot is None:
             return
@@ -5527,7 +5958,7 @@ class VirtualControllerApp:
         if not hasattr(self, attr_name):
             setattr(self, attr_name, 0.0)
         if not hasattr(self, "_sensor_dataset_ui_refresh_interval_s"):
-            self._sensor_dataset_ui_refresh_interval_s = 0.2
+            self._sensor_dataset_ui_refresh_interval_s = DATASET_UI_REFRESH_INTERVAL_S
         now = time.monotonic()
         if force or (now - getattr(self, attr_name)) >= self._sensor_dataset_ui_refresh_interval_s:
             self._refresh_sensor_dataset_ui(sensor)
@@ -5705,7 +6136,10 @@ class VirtualControllerApp:
             try:
                 if ImuDataset.is_imu_csv(path):
                     self._load_shared_imu_dataset_path(path)
-                    loaded.append(getattr(self, f"{prefix}_dataset"))
+                    loaded_dataset = getattr(self, f"{prefix}_dataset")
+                    if loaded_dataset is None:
+                        raise ValueError(f"IMU CSV did not produce a {self._sensor_title(sensor).lower()} projection")
+                    loaded.append(loaded_dataset)
                     continue
                 dataset = dataset_cls.from_csv(path)
             except Exception as exc:
@@ -6766,6 +7200,7 @@ class VirtualControllerApp:
         gx: float,
         gy: float,
         gz: float,
+        rate_mag: float | None = None,
         derived_records: Sequence[GyroscopeSampleRecord] | None = None,
     ) -> None:
         self._ensure_sensor_source_state("gyro")
@@ -6786,7 +7221,7 @@ class VirtualControllerApp:
                 gyro_x=gx,
                 gyro_y=gy,
                 gyro_z=gz,
-                rate_mag=compute_gyro_rate_magnitude(gx, gy, gz),
+                rate_mag=compute_gyro_rate_magnitude(gx, gy, gz) if rate_mag is None else rate_mag,
                 flags="",
             )
             self._gyro_dataset.append(record)
@@ -6808,11 +7243,28 @@ class VirtualControllerApp:
         accelerometer_tab = getattr(self, "accelerometer_tab", None)
         if accelerometer_tab is None:
             return
+        first_live_ui_sample = self._acc_last_live_snapshot is None
         timestamp_pc_est = self._estimate_pc_event_ms_from_mcu(imu.ts_ms)
         ax = float(imu.accel[0])
         ay = float(imu.accel[1])
         az = float(imu.accel[2])
         raw_roll_deg, raw_pitch_deg = compute_accelerometer_tilt_deg(ax, ay, az)
+        ui_update_due = self._should_update_sensor_live_ui("acc", accelerometer_tab, force=first_live_ui_sample)
+        recording_needed = bool(getattr(self, "_acc_recording_active", False) or getattr(self, "_imu_recording_active", False))
+        realtime_needed = self._has_active_sensor_realtime_methods("acc")
+        if not ui_update_due and not recording_needed and not realtime_needed:
+            self._acc_last_live_snapshot = {
+                "timestamp_mcu": imu.ts_ms,
+                "timestamp_pc_rx": pc_rx_ms,
+                "timestamp_pc_est": timestamp_pc_est,
+                "ax": ax,
+                "ay": ay,
+                "az": az,
+                "raw_roll_deg": raw_roll_deg,
+                "raw_pitch_deg": raw_pitch_deg,
+                "derived_streams": dict(getattr(self, "_acc_latest_derived_streams", {})),
+            }
+            return
         raw_sample = {
             "stream_id": "raw_accelerometer",
             "stream_type": "raw",
@@ -6861,6 +7313,8 @@ class VirtualControllerApp:
             "raw_pitch_deg": raw_pitch_deg,
             "derived_streams": dict(derived_streams),
         }
+        if not ui_update_due:
+            return
         self._refresh_sensor_output_routing_ui("acc")
         selected_roll_deg, selected_pitch_deg, selected_source_label = self._resolve_accelerometer_selected_output(
             raw_roll_deg,
@@ -6884,10 +7338,26 @@ class VirtualControllerApp:
         gyroscope_tab = getattr(self, "gyroscope_tab", None)
         if gyroscope_tab is None:
             return
+        first_live_ui_sample = self._gyro_last_live_snapshot is None
         timestamp_pc_est = self._estimate_pc_event_ms_from_mcu(imu.ts_ms)
         gx = float(imu.gyro[0])
         gy = float(imu.gyro[1])
         gz = float(imu.gyro[2])
+        rate_mag = compute_gyro_rate_magnitude(gx, gy, gz)
+        ui_update_due = self._should_update_sensor_live_ui("gyro", gyroscope_tab, force=first_live_ui_sample)
+        recording_needed = bool(getattr(self, "_gyro_recording_active", False) or getattr(self, "_imu_recording_active", False))
+        realtime_needed = self._has_active_sensor_realtime_methods("gyro")
+        if not ui_update_due and not recording_needed and not realtime_needed:
+            self._gyro_last_live_snapshot = {
+                "timestamp_mcu": imu.ts_ms,
+                "timestamp_pc_rx": pc_rx_ms,
+                "timestamp_pc_est": timestamp_pc_est,
+                "gx": gx,
+                "gy": gy,
+                "gz": gz,
+                "derived_streams": dict(getattr(self, "_gyro_latest_derived_streams", {})),
+            }
+            return
         raw_sample = {
             "stream_id": "raw_gyroscope",
             "stream_type": "raw",
@@ -6899,7 +7369,7 @@ class VirtualControllerApp:
             "gyro_x": gx,
             "gyro_y": gy,
             "gyro_z": gz,
-            "rate_mag": compute_gyro_rate_magnitude(gx, gy, gz),
+            "rate_mag": rate_mag,
             "flags": "",
         }
         self._publish_calibration_stream_snapshot(make_builtin_producer_id("raw_gyroscope"), "imu.gyro_vector", raw_sample)
@@ -6911,6 +7381,7 @@ class VirtualControllerApp:
             gx=gx,
             gy=gy,
             gz=gz,
+            rate_mag=rate_mag,
             derived_records=derived_records,
         )
         self._gyro_last_live_snapshot = {
@@ -6922,6 +7393,8 @@ class VirtualControllerApp:
             "gz": gz,
             "derived_streams": dict(derived_streams),
         }
+        if not ui_update_due:
+            return
         self._refresh_sensor_output_routing_ui("gyro")
         gyroscope_tab.update_live_imu(
             timestamp_mcu=imu.ts_ms,
@@ -7243,17 +7716,62 @@ class VirtualControllerApp:
     def _msg_to_dict(self, msg: Any) -> dict:
         # Keep logger stable and explicit
         if isinstance(msg, MotorData):
-            return {"type": "D2", **asdict(msg)}
+            return {
+                "type": "D2",
+                "ts_ms": msg.ts_ms,
+                "current_l": msg.current_l,
+                "current_r": msg.current_r,
+                "voltage_l": msg.voltage_l,
+                "voltage_r": msg.voltage_r,
+                "temp_l": msg.temp_l,
+                "temp_r": msg.temp_r,
+            }
         if isinstance(msg, SensorTensorData):
-            return {"type": "D3", **asdict(msg)}
+            return {
+                "type": "D3",
+                "ts_ms": msg.ts_ms,
+                "linear_velocity": msg.linear_velocity,
+                "angular_velocity": msg.angular_velocity,
+                "linear_quality": msg.linear_quality,
+                "angular_quality": msg.angular_quality,
+            }
+        if isinstance(msg, RawGnssData):
+            return {
+                "type": "D4",
+                "ts_ms": msg.ts_ms,
+                "unix_time": msg.unix_time,
+                "heading": msg.heading,
+                "pitch": msg.pitch,
+                "heading_stddev": msg.heading_stddev,
+                "pitch_stddev": msg.pitch_stddev,
+            }
         if isinstance(msg, ImuData):
-            return {"type": "D0", **asdict(msg)}
+            return {
+                "type": "D0",
+                "ts_ms": msg.ts_ms,
+                "accel": msg.accel,
+                "magn": msg.magn,
+                "gyro": msg.gyro,
+            }
         if isinstance(msg, TachoData):
-            return {"type": "D1", **asdict(msg)}
+            return {
+                "type": "D1",
+                "ts_ms": msg.ts_ms,
+                "left_rpm": msg.left_rpm,
+                "right_rpm": msg.right_rpm,
+            }
         if isinstance(msg, SyncResp):
             return {"type": "F0", "t2_rx_ms": msg.t2_rx_ms, "t3_tx_ms": msg.t3_tx_ms}
         if isinstance(msg, MotorPidData):
-            return {"type": "F1", **asdict(msg)}
+            return {
+                "type": "F1",
+                "left_p": msg.left_p,
+                "left_i": msg.left_i,
+                "left_d": msg.left_d,
+                "right_p": msg.right_p,
+                "right_i": msg.right_i,
+                "right_d": msg.right_d,
+            }
         if isinstance(msg, Frame):
             return {"type": "unknown", "msg_type": msg.msg_type, "len": len(msg.payload)}
         return {"type": "unknown", "repr": repr(msg)}

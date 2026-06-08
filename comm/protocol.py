@@ -12,6 +12,7 @@ D0: u32 ts_ms + 9 * float32
 D1: u32 ts_ms + i32 left_rpm + i32 right_rpm
 D2: u32 ts_ms + i16 cur_l + i16 cur_r + i16 volt_l + i16 volt_r + i16 temp_l + i16 temp_r
 D3: u32 ts_ms + 12 * float32
+D4: u32 ts_ms + u64 unix_time + 4 * float32 (heading, pitch, heading_stddev, pitch_stddev)
 B0: u16 seq + u32 pc_time_ms (u32)
 B1: u16 seq + u32 pc_time_ms (u32)
 F0: u32 t2_mcu_rx_ms + u32 t3_mcu_tx_ms
@@ -34,6 +35,7 @@ TYPE_D0_IMU   = 0xD0
 TYPE_D1_TACHO = 0xD1
 TYPE_D2_MOTOR = 0xD2
 TYPE_D3_SENSOR_TENSOR = 0xD3
+TYPE_D4_RAW_GNSS = 0xD4
 TYPE_B0_SYNC_REQ  = 0xB0
 TYPE_B1_PID_REQ   = 0xB1
 TYPE_F0_SYNC_RESP = 0xF0
@@ -80,6 +82,15 @@ class SensorTensorData:
     angular_quality: tuple[float, float, float]
 
 @dataclass
+class RawGnssData:
+    ts_ms: int
+    unix_time: int
+    heading: float
+    pitch: float
+    heading_stddev: float
+    pitch_stddev: float
+
+@dataclass
 class SyncResp:
     t2_rx_ms: int
     t3_tx_ms: int
@@ -93,7 +104,7 @@ class MotorPidData:
     right_i: float
     right_d: float
 
-ParsedMsg = Union[ImuData, TachoData, MotorData, SensorTensorData, SyncResp, MotorPidData, Frame]
+ParsedMsg = Union[ImuData, TachoData, MotorData, SensorTensorData, RawGnssData, SyncResp, MotorPidData, Frame]
 
 class StreamParser:
     """
@@ -180,6 +191,17 @@ def parse_frame(frame: Frame) -> ParsedMsg:
             angular_velocity=vals[3:6],
             linear_quality=vals[6:9],
             angular_quality=vals[9:12],
+        )
+
+    if t == TYPE_D4_RAW_GNSS and len(p) == 28:
+        ts_ms, unix_time, heading, pitch, heading_stddev, pitch_stddev = struct.unpack_from("<IQffff", p, 0)
+        return RawGnssData(
+            ts_ms=ts_ms,
+            unix_time=unix_time,
+            heading=heading,
+            pitch=pitch,
+            heading_stddev=heading_stddev,
+            pitch_stddev=pitch_stddev,
         )
 
     if t == TYPE_F0_SYNC_RESP and len(p) == 8:

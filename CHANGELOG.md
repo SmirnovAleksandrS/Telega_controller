@@ -23,6 +23,9 @@ Log format: .log (JSON Lines)
   - saves parsed messages to .log as JSONL, includes PC receive time and time model snapshot
 
 ## Unreleased
+- Logging stability: file logging now starts immediately from a selected target file, writes before GUI log fanout, flushes in bounded batches, and limits GUI log backlog/trimming work under high-rate telemetry.
+- Sensors recording stability: magnetometer Record now asks for the dataset CSV path up front, streams parsed shared sensor rows to disk during recording, and caps the live dataset table to a latest-rows preview instead of inserting an unbounded Treeview row set.
+- Protocol/Sensors: added strong parsing for `D4` Raw GNSS packets and wired GNSS heading into the magnetometer reference heading stream.
 - Manual control: added left/right motor PID editors with debounced `A2` send, explicit `Send PID` / `Read PID` actions, automatic `B1` PID read after initial connection time-sync, `F1` response handling back into the same UI fields, and log filters for the new PID packet types.
 - Magnetometer workflow: added `Clear datasets` to drop all loaded/recorded datasets from memory and `Clear params` to reset a method back to an uncalibrated runtime state without removing the plugin itself.
 - Magnetometer calibration routing: added optional plugin `stream_requirements`, a shared latest-snapshot stream registry, persisted per-method input bindings keyed by plugin path, offline upstream-stream resolution for chained calibrations, and dataset metadata snapshots of active method bindings.

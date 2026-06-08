@@ -3,8 +3,11 @@ from __future__ import annotations
 import csv
 import json
 import os
+import queue
+import threading
+import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TextIO
 
 CSV_COLUMNS = (
     "stream_id",
@@ -132,6 +135,96 @@ class ImuSampleRecord:
         )
 
 
+class ImuCsvStreamWriter:
+    def __init__(
+        self,
+        path: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        flush_every_rows: int = 250,
+        flush_interval_s: float = 1.0,
+        max_queue_rows: int = 50000,
+    ) -> None:
+        self.path = path
+        self._flush_every_rows = max(1, int(flush_every_rows))
+        self._flush_interval_s = max(0.1, float(flush_interval_s))
+        self._queue: queue.Queue[ImuSampleRecord | None] = queue.Queue(maxsize=max(1, int(max_queue_rows)))
+        self._pending_flush_rows = 0
+        self._last_flush_s = time.monotonic()
+        self._closed = False
+        self._error: BaseException | None = None
+        self._fh: TextIO = open(path, "w", encoding="utf-8", newline="")
+        if metadata:
+            self._fh.write(f"{METADATA_PREFIX}{json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))}\n")
+        self._writer = csv.DictWriter(self._fh, fieldnames=CSV_COLUMNS)
+        self._writer.writeheader()
+        self.flush()
+        self._thread = threading.Thread(target=self._run, name="imu-csv-stream-writer", daemon=True)
+        self._thread.start()
+
+    def _raise_if_error(self) -> None:
+        if self._error is not None:
+            raise RuntimeError(f"IMU CSV stream writer failed: {self._error}") from self._error
+
+    def append(self, record: ImuSampleRecord) -> None:
+        if self._closed:
+            raise RuntimeError("IMU CSV stream writer is closed")
+        self._raise_if_error()
+        try:
+            self._queue.put(record, timeout=0.2)
+        except queue.Full as exc:
+            raise RuntimeError("IMU CSV stream writer queue is full") from exc
+
+    def _run(self) -> None:
+        try:
+            while True:
+                record = self._queue.get()
+                try:
+                    if record is None:
+                        return
+                    self._writer.writerow(record.to_csv_row())
+                    self._pending_flush_rows += 1
+                    now_s = time.monotonic()
+                    if (
+                        self._pending_flush_rows >= self._flush_every_rows
+                        or (now_s - self._last_flush_s) >= self._flush_interval_s
+                    ):
+                        self.flush()
+                finally:
+                    self._queue.task_done()
+        except BaseException as exc:
+            self._error = exc
+            self._drain_queue()
+
+    def _drain_queue(self) -> None:
+        while True:
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                return
+            else:
+                self._queue.task_done()
+
+    def flush(self) -> None:
+        self._fh.flush()
+        self._pending_flush_rows = 0
+        self._last_flush_s = time.monotonic()
+
+    def close(self) -> None:
+        if self._closed:
+            self._raise_if_error()
+            return
+        self._closed = True
+        try:
+            if self._thread.is_alive():
+                self._queue.put(None)
+                self._thread.join()
+            self._raise_if_error()
+            self.flush()
+        finally:
+            self._fh.close()
+
+
 class ImuDataset:
     def __init__(
         self,
@@ -145,12 +238,34 @@ class ImuDataset:
         self.source_path = source_path
         self.records: list[ImuSampleRecord] = list(records or [])
         self.metadata: dict[str, Any] = dict(metadata or {})
+        self._recompute_summary_cache()
+
+    def _recompute_summary_cache(self) -> None:
+        self._summary_source_ids: set[str] = set()
+        self._summary_time_start: int | None = None
+        self._summary_time_end: int | None = None
+        for record in self.records:
+            self._update_summary_cache_for_record(record)
+
+    def _update_summary_cache_for_record(self, record: ImuSampleRecord) -> None:
+        self._summary_source_ids.add(record.stream_id)
+        timestamp_mcu = record.timestamp_mcu
+        if self._summary_time_start is None or timestamp_mcu < self._summary_time_start:
+            self._summary_time_start = timestamp_mcu
+        if self._summary_time_end is None or timestamp_mcu > self._summary_time_end:
+            self._summary_time_end = timestamp_mcu
+
+    def has_stream(self, stream_id: str) -> bool:
+        return stream_id in self._summary_source_ids
 
     def append(self, record: ImuSampleRecord) -> None:
         self.records.append(record)
+        self._update_summary_cache_for_record(record)
 
     def extend(self, records: list[ImuSampleRecord]) -> None:
         self.records.extend(records)
+        for record in records:
+            self._update_summary_cache_for_record(record)
 
     def to_csv(self, path: str) -> None:
         with open(path, "w", encoding="utf-8", newline="") as fh:
@@ -211,14 +326,11 @@ class ImuDataset:
                 "source_count": "0",
                 "time_range": "—",
             }
-        time_start = min(record.timestamp_mcu for record in self.records)
-        time_end = max(record.timestamp_mcu for record in self.records)
-        source_ids = {record.stream_id for record in self.records}
         return {
             "name": os.path.basename(self.source_path) if self.source_path else self.name,
             "row_count": str(len(self.records)),
-            "source_count": str(len(source_ids)),
-            "time_range": f"{time_start}..{time_end} MCU",
+            "source_count": str(len(self._summary_source_ids)),
+            "time_range": f"{self._summary_time_start}..{self._summary_time_end} MCU",
         }
 
     def _shared_projection_metadata(self) -> dict[str, Any]:

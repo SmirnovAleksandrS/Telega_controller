@@ -352,12 +352,11 @@ class AccelerometerTab(MagnetometerTab):
             pitch_deg=self._view_rotation_pitch_deg,
         )
 
+    def _is_cloud_record(self, record: AccelerometerSampleRecord) -> bool:
+        return "tilt_only" not in (record.flags or "")
+
     def _raw_cloud_records(self) -> list[AccelerometerSampleRecord]:
-        return [
-            record
-            for record in self._dataset_records_by_stream.get("raw_accelerometer", [])
-            if "tilt_only" not in (record.flags or "")
-        ]
+        return self._dataset_cloud_records_by_stream.get("raw_accelerometer", [])
 
     def _iter_visible_dataset_clouds(self) -> list[dict[str, object]]:
         clouds: list[dict[str, object]] = []
@@ -376,7 +375,7 @@ class AccelerometerTab(MagnetometerTab):
                 card = self._method_cards.get(method_id)
                 if card is None or not card.show_var.get():
                     continue
-                records = self._dataset_records_by_stream.get(stream_id, [])
+                records = self._dataset_cloud_records_by_stream.get(stream_id, [])
                 if not records:
                     records = self._method_dataset_clouds.get(method_id, [])
                 if not records:
@@ -684,6 +683,7 @@ class AccelerometerTab(MagnetometerTab):
                 record.flags,
             ),
         )
+        self._note_dataset_row_inserted()
 
     def set_metrics_report(self, *, rows: list[dict[str, str]], summary_text: str, can_export: bool) -> None:
         del rows, summary_text, can_export

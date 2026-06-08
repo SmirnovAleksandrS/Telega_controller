@@ -20,6 +20,8 @@ class MagnetometerDatasetTests(unittest.TestCase):
         dataset.trim(1, 2)
 
         self.assertEqual([record.timestamp_mcu for record in dataset.records], [11, 12])
+        self.assertEqual(dataset.summary()["time_range"], "11..12 MCU")
+        self.assertTrue(dataset.has_stream("s"))
 
     def test_delete_rows_removes_selected_indices(self) -> None:
         dataset = Dataset("delete_case")
@@ -32,6 +34,9 @@ class MagnetometerDatasetTests(unittest.TestCase):
         dataset.delete_rows([0, 2])
 
         self.assertEqual([record.stream_id for record in dataset.records], ["b"])
+        self.assertEqual(dataset.summary()["source_count"], "1")
+        self.assertFalse(dataset.has_stream("a"))
+        self.assertTrue(dataset.has_stream("b"))
 
     def test_concatenate_returns_merged_dataset(self) -> None:
         dataset_a = Dataset("a")

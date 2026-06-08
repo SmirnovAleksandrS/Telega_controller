@@ -11,6 +11,7 @@ import unittest
 from app.calibration_streams import SCOPE_CALIBRATE, infer_stream_requirements, make_method_producer_id
 from app.dialogs import format_method_info_text
 from app.gui_app import VirtualControllerApp
+from app.imu_dataset import ImuDataset
 from app.magnetometer_dataset import Dataset, SampleRecord
 from app.magnetometer_plugin_loader import CalibrationRunResult, LoadedMethodPlugin, ParamIoResult, PluginDiagnostics
 from app.manual_tab import ManualControlState
@@ -19,6 +20,7 @@ from comm.protocol import (
     Frame,
     ImuData,
     MotorPidData,
+    RawGnssData,
     TYPE_C0_CONTROL,
     TYPE_D3_SENSOR_TENSOR,
     build_pid_req,
@@ -26,6 +28,7 @@ from comm.protocol import (
     parse_frame,
 )
 from comm.time_sync import TimeModel
+from log.parsed_logger import ParsedLogger
 from runtime.contracts import AutopilotMode
 
 
@@ -54,6 +57,7 @@ class _DummyCoordTab:
 class _DummyMagnetometerTab:
     def __init__(self) -> None:
         self.live_updates: list[dict[str, object]] = []
+        self.gnss_updates: list[dict[str, object]] = []
         self.rows: list[tuple[int, object]] = []
         self.summary: dict[str, str] | None = None
         self.recording_state: tuple[bool, bool, bool, bool] | None = None
@@ -77,6 +81,9 @@ class _DummyMagnetometerTab:
 
     def update_live_imu(self, **kwargs: object) -> None:
         self.live_updates.append(kwargs)
+
+    def update_gnss_heading(self, **kwargs: object) -> None:
+        self.gnss_updates.append(kwargs)
 
     def update_dataset_summary(self, **kwargs: str) -> None:
         self.summary = dict(kwargs)
@@ -294,6 +301,7 @@ class GuiControlRoutingTests(unittest.TestCase):
         app.time_model = types.SimpleNamespace(a=1.0, b=0.0, have_lock=True)
         app._msg_to_dict = lambda _parsed: {"type": "imu"}
         app._update_mcu_time_label = lambda: None
+        app._update_mcu_time_label_if_due = lambda: None
         app._update_uart_status = lambda: None
         app._update_magnetometer_live_view = lambda _parsed, _pc_rx_ms: None
         app._update_accelerometer_live_view = lambda _parsed, _pc_rx_ms: (_ for _ in ()).throw(KeyError("raw_magnetometer"))
@@ -323,12 +331,40 @@ class GuiControlRoutingTests(unittest.TestCase):
         app.radio_var = types.SimpleNamespace(set=lambda _value: None)
         app._quality_0_10 = lambda: 10
         app._update_mcu_time_label = lambda: None
+        app._update_mcu_time_label_if_due = lambda: None
         app._update_uart_status = lambda: None
         app.root = types.SimpleNamespace(after=lambda delay, callback: scheduled.append((delay, callback)))
 
         VirtualControllerApp._poll_rx(app)
 
         self.assertEqual(app.worker.rx_queue.qsize(), 5)
+        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(scheduled[0][0], gui_app_module.RX_POLL_BACKLOG_INTERVAL_MS)
+
+    def test_poll_rx_reschedules_backlog_when_time_budget_expires(self) -> None:
+        import app.gui_app as gui_app_module
+
+        app = object.__new__(VirtualControllerApp)
+        scheduled: list[tuple[int, object]] = []
+        app._is_shutting_down = False
+        app.worker = types.SimpleNamespace(rx_queue=queue.Queue())
+        app.worker.rx_queue.put(RxError(pc_rx_ms=1000, error="noise"))
+        app._send_control_if_due = lambda _now_ms: None
+        app._kick_sync_if_due = lambda _now_ms: None
+        app._poll_magnetometer_calibration_jobs = lambda: None
+        app._poll_sensor_calibration_jobs = lambda _sensor: None
+        app._update_mcu_time_label_if_due = lambda: None
+        app._update_uart_status = lambda: None
+        app.root = types.SimpleNamespace(after=lambda delay, callback: scheduled.append((delay, callback)))
+
+        old_budget = gui_app_module.RX_PROCESS_TIME_BUDGET_S
+        gui_app_module.RX_PROCESS_TIME_BUDGET_S = -1.0
+        try:
+            VirtualControllerApp._poll_rx(app)
+        finally:
+            gui_app_module.RX_PROCESS_TIME_BUDGET_S = old_budget
+
+        self.assertEqual(app.worker.rx_queue.qsize(), 1)
         self.assertEqual(len(scheduled), 1)
         self.assertEqual(scheduled[0][0], gui_app_module.RX_POLL_BACKLOG_INTERVAL_MS)
 
@@ -363,6 +399,34 @@ class GuiControlRoutingTests(unittest.TestCase):
             app.manual_tab.received,
             [("line-1", None), ("line-2", "tx")],
         )
+
+    def test_start_logging_with_explicit_path_creates_file_immediately(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        statuses: list[str] = []
+        app.logger = ParsedLogger(flush_every_lines=1000, flush_interval_s=999.0)
+        app._log_path = ""
+        app.log_status_var = types.SimpleNamespace(set=statuses.append)
+        app._apply_log_status_style = lambda: None
+        app._show_error = lambda title, message: self.fail(f"{title}: {message}")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = os.path.join(tmp_dir, "telemetry.log")
+            VirtualControllerApp._start_logging(app, path)
+            self.assertTrue(app.logger.is_running)
+            self.assertEqual(app._log_path, path)
+            with open(path, "r", encoding="utf-8") as fh:
+                self.assertIn("log_start", fh.read())
+
+            app.logger.write_line("sample-line")
+            app.logger.flush()
+            VirtualControllerApp._stop_logging(app)
+            with open(path, "r", encoding="utf-8") as fh:
+                content = fh.read()
+
+        self.assertIn("Log Running: telemetry.log", statuses)
+        self.assertEqual(statuses[-1], "Log Stopped")
+        self.assertIn("sample-line", content)
+        self.assertIn("log_stop", content)
 
     def test_handle_motor_pid_response_updates_manual_fields(self) -> None:
         app = object.__new__(VirtualControllerApp)
@@ -478,25 +542,38 @@ class GuiControlRoutingTests(unittest.TestCase):
         app.magnetometer_tab = _DummyMagnetometerTab()
         app._make_magnetometer_dataset_name = lambda: "session_001"
 
-        VirtualControllerApp._on_magnetometer_start_record(app)
-        VirtualControllerApp._record_magnetometer_sample(
-            app,
-            timestamp_mcu=1000,
-            timestamp_pc_rx=1010,
-            timestamp_pc_est=1008,
-            mx=1.0,
-            my=0.0,
-            mz=0.5,
-        )
-        VirtualControllerApp._on_magnetometer_stop_record(app)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "session_001.csv")
+            app._choose_magnetometer_dataset_path = lambda: path
+            app._remember_dialog_dir = lambda _kind, _path: None
+            app._save_settings = lambda: None
+            app._show_error = lambda title, message: self.fail(f"{title}: {message}")
+
+            VirtualControllerApp._on_magnetometer_start_record(app)
+            VirtualControllerApp._record_magnetometer_sample(
+                app,
+                timestamp_mcu=1000,
+                timestamp_pc_rx=1010,
+                timestamp_pc_est=1008,
+                mx=1.0,
+                my=0.0,
+                mz=0.5,
+            )
+            VirtualControllerApp._on_magnetometer_stop_record(app)
+            streamed = ImuDataset.from_csv(path)
 
         self.assertIsNotNone(app._mag_dataset)
         assert app._mag_dataset is not None
-        self.assertEqual(app._mag_dataset.name, "session_001")
+        self.assertEqual(app._mag_dataset.name, "session_001.csv")
         self.assertEqual(len(app._mag_dataset.records), 1)
+        assert app._imu_dataset is not None
+        self.assertEqual(len(app._imu_dataset.records), 0)
+        self.assertEqual(len(streamed.records), 2)
+        self.assertEqual(streamed.records[0].stream_id, "raw_magnetometer")
+        self.assertEqual(streamed.records[1].stream_id, "raw_heading")
         self.assertEqual(app.magnetometer_tab.rows[0][0], 1)
         self.assertEqual(app.magnetometer_tab.summary, {
-            "name": "session_001",
+            "name": "session_001.csv",
             "row_count": "1",
             "source_count": "1",
             "time_range": "1000..1000 MCU",
@@ -796,6 +873,58 @@ class GuiControlRoutingTests(unittest.TestCase):
         self.assertEqual(len(app._mag_dataset.records), 1)
         self.assertEqual(app._mag_dataset.records[0].stream_id, "raw_heading")
         self.assertEqual(app._mag_dataset.records[0].flags, "heading_only")
+
+    def test_raw_gnss_updates_magnetometer_heading_stream_and_reference_dataset(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app.time_model = TimeModel(a=2.0, b=100.0, have_lock=True)
+        app._mag_sources = app._default_magnetometer_sources()
+        app._mag_sources["gnss_heading"]["record"] = True
+        app._mag_selected_source_id = "gnss_heading"
+        app._mag_datasets = []
+        app._mag_dataset = Dataset("record_gnss_heading")
+        app._mag_datasets.append(app._mag_dataset)
+        app._mag_recording_active = True
+        app._mag_dataset_export_path = ""
+        app._mag_methods = {}
+        app._mag_selected_method_id = None
+        app._mag_latest_derived_streams = {}
+        app._mag_primary_heading_stream_id = "gnss_heading"
+        app._mag_last_live_snapshot = None
+        app._calibration_stream_snapshots = {}
+        app._imu_datasets = []
+        app._imu_dataset = None
+        app._imu_recording_active = False
+        app._imu_dataset_export_path = ""
+        app.magnetometer_tab = _DummyMagnetometerTab()
+
+        VirtualControllerApp._update_magnetometer_gnss_view(
+            app,
+            RawGnssData(
+                ts_ms=500,
+                unix_time=1_774_000_001,
+                heading=725.0,
+                pitch=-1.25,
+                heading_stddev=0.2,
+                pitch_stddev=0.3,
+            ),
+            610,
+        )
+
+        self.assertEqual(len(app._mag_dataset.records), 1)
+        record = app._mag_dataset.records[0]
+        self.assertEqual(record.stream_id, "gnss_heading")
+        self.assertEqual(record.stream_type, "reference")
+        self.assertAlmostEqual(record.heading or 0.0, 5.0)
+        self.assertEqual(record.flags, "heading_only")
+        self.assertEqual(app.magnetometer_tab.heading_routing, {
+            "stream_choices": [("raw_heading", "Raw Heading"), ("gnss_heading", "GNSS Heading")],
+            "primary_stream_id": "gnss_heading",
+        })
+        self.assertEqual(app.magnetometer_tab.primary_output_display, {
+            "heading": 5.0,
+            "source_label": "GNSS Heading",
+        })
+        self.assertEqual(app.magnetometer_tab.gnss_updates[-1]["heading"], 5.0)
 
     def test_source_toggle_updates_ui_state_snapshot(self) -> None:
         app = object.__new__(VirtualControllerApp)

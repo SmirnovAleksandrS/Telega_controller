@@ -18,6 +18,8 @@ from app.dialogs import SpeedMapConfig
 from app.styles import PANEL_BG
 from utils.speed_map import SpeedMapPoint, pwm_to_speed
 
+LOG_TRIM_CHUNK = 100
+
 @dataclass
 class ManualControlState:
     left_cmd: int = 1500
@@ -440,8 +442,9 @@ class ManualTab(ttk.Frame):
         self._log_lines += len(entries)
         overflow = self._log_lines - self._log_max_lines
         if overflow > 0:
-            self.log_text.delete("1.0", f"{overflow + 1}.0")
-            self._log_lines -= overflow
+            trim_count = max(overflow, min(LOG_TRIM_CHUNK, self._log_lines))
+            self.log_text.delete("1.0", f"{trim_count + 1}.0")
+            self._log_lines -= trim_count
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 

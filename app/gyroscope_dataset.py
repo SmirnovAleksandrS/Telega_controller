@@ -112,12 +112,34 @@ class GyroscopeDataset:
         self.source_path = source_path
         self.records: list[GyroscopeSampleRecord] = list(records or [])
         self.metadata: dict[str, Any] = dict(metadata or {})
+        self._recompute_summary_cache()
+
+    def _recompute_summary_cache(self) -> None:
+        self._summary_source_ids: set[str] = set()
+        self._summary_time_start: int | None = None
+        self._summary_time_end: int | None = None
+        for record in self.records:
+            self._update_summary_cache_for_record(record)
+
+    def _update_summary_cache_for_record(self, record: GyroscopeSampleRecord) -> None:
+        self._summary_source_ids.add(record.stream_id)
+        timestamp_mcu = record.timestamp_mcu
+        if self._summary_time_start is None or timestamp_mcu < self._summary_time_start:
+            self._summary_time_start = timestamp_mcu
+        if self._summary_time_end is None or timestamp_mcu > self._summary_time_end:
+            self._summary_time_end = timestamp_mcu
+
+    def has_stream(self, stream_id: str) -> bool:
+        return stream_id in self._summary_source_ids
 
     def append(self, record: GyroscopeSampleRecord) -> None:
         self.records.append(record)
+        self._update_summary_cache_for_record(record)
 
     def extend(self, records: list[GyroscopeSampleRecord]) -> None:
         self.records.extend(records)
+        for record in records:
+            self._update_summary_cache_for_record(record)
 
     def trim(self, start_idx: int, end_idx: int) -> None:
         if not self.records:
@@ -125,12 +147,14 @@ class GyroscopeDataset:
         first = max(0, min(start_idx, end_idx))
         last = min(len(self.records) - 1, max(start_idx, end_idx))
         self.records = self.records[first:last + 1]
+        self._recompute_summary_cache()
 
     def delete_rows(self, indices: list[int]) -> None:
         if not indices:
             return
         index_set = {index for index in indices if 0 <= index < len(self.records)}
         self.records = [record for idx, record in enumerate(self.records) if idx not in index_set]
+        self._recompute_summary_cache()
 
     def concatenate(self, other_dataset: GyroscopeDataset, *, name: str | None = None) -> GyroscopeDataset:
         merged_name = name or f"{self.name}+{other_dataset.name}"
@@ -185,12 +209,9 @@ class GyroscopeDataset:
                 "time_range": "—",
             }
 
-        time_start = min(record.timestamp_mcu for record in self.records)
-        time_end = max(record.timestamp_mcu for record in self.records)
-        source_ids = {record.stream_id for record in self.records}
         return {
             "name": os.path.basename(self.source_path) if self.source_path else self.name,
             "row_count": str(len(self.records)),
-            "source_count": str(len(source_ids)),
-            "time_range": f"{time_start}..{time_end} MCU",
+            "source_count": str(len(self._summary_source_ids)),
+            "time_range": f"{self._summary_time_start}..{self._summary_time_end} MCU",
         }

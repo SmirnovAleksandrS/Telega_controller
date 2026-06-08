@@ -15,13 +15,15 @@ from app.accelerometer_plugin_loader import (
 )
 from app.dialogs import build_method_info_payload
 from app.gui_app import VirtualControllerApp
+from app.gyroscope_tab import GyroscopeTab
 from app.gyroscope_dataset import GyroscopeDataset, GyroscopeSampleRecord
 from app.gyroscope_plugin_loader import (
     load_method_plugin as load_gyroscope_plugin,
     run_method_calibration as run_gyroscope_calibration,
     run_method_process as run_gyroscope_process,
 )
-from app.imu_dataset import ImuDataset, ImuSampleRecord
+from app.imu_dataset import ImuCsvStreamWriter, ImuDataset, ImuSampleRecord
+from app.magnetometer_tab import DATA_CLOUD_PREVIEW_MAX_RECORDS_PER_STREAM, DATA_TABLE_MAX_VISIBLE_ROWS
 from comm.protocol import ImuData
 
 
@@ -133,6 +135,25 @@ class _DummySensorTab:
 
     def apply_view_state(self, state: dict[str, object]) -> None:
         self.view_state = dict(state)
+
+
+class _FakeTreeview:
+    def __init__(self) -> None:
+        self.rows: list[tuple[str, tuple[object, ...]]] = []
+        self._next_id = 0
+
+    def insert(self, _parent: str, _index: str, *, values: tuple[object, ...]) -> str:
+        item_id = f"item-{self._next_id}"
+        self._next_id += 1
+        self.rows.append((item_id, tuple(values)))
+        return item_id
+
+    def get_children(self) -> tuple[str, ...]:
+        return tuple(item_id for item_id, _values in self.rows)
+
+    def delete(self, *item_ids: str) -> None:
+        item_id_set = set(item_ids)
+        self.rows = [(item_id, values) for item_id, values in self.rows if item_id not in item_id_set]
 
 
 def _fibonacci_vectors(count: int) -> list[tuple[float, float, float]]:
@@ -332,6 +353,9 @@ class SensorDatasetTests(unittest.TestCase):
         merged = dataset.concatenate(other, name="merged")
 
         self.assertEqual([record.stream_id for record in dataset.records], ["b"])
+        self.assertEqual(dataset.summary()["time_range"], "11..11 MCU")
+        self.assertFalse(dataset.has_stream("a"))
+        self.assertTrue(dataset.has_stream("b"))
         self.assertEqual(merged.name, "merged")
         self.assertEqual([record.stream_id for record in merged.records], ["b", "d"])
 
@@ -482,6 +506,105 @@ class AccelerometerViewRegressionTests(unittest.TestCase):
         self.assertEqual(radius, 13.0)
 
 
+class SensorTablePreviewRegressionTests(unittest.TestCase):
+    def _make_accelerometer_tab(self) -> AccelerometerTab:
+        tab = object.__new__(AccelerometerTab)
+        tab.data_tree = _FakeTreeview()
+        tab._data_tree_visible_rows = 0
+        return tab
+
+    def _make_gyroscope_tab(self) -> GyroscopeTab:
+        tab = object.__new__(GyroscopeTab)
+        tab.data_tree = _FakeTreeview()
+        tab._data_tree_visible_rows = 0
+        return tab
+
+    def test_accelerometer_table_preview_is_bounded(self) -> None:
+        tab = self._make_accelerometer_tab()
+        inserted_count = DATA_TABLE_MAX_VISIBLE_ROWS + 120
+        for row_id in range(1, inserted_count + 1):
+            record = AccelerometerSampleRecord(
+                "raw_accelerometer",
+                "raw",
+                "Raw Accelerometer",
+                "builtin",
+                row_id,
+                row_id + 2,
+                row_id + 1,
+                float(row_id),
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                "",
+            )
+            AccelerometerTab._insert_dataset_row(tab, row_id, record)
+
+        self.assertLessEqual(len(tab.data_tree.rows), DATA_TABLE_MAX_VISIBLE_ROWS)
+        self.assertEqual(tab._data_tree_visible_rows, len(tab.data_tree.rows))
+        self.assertEqual(tab.data_tree.rows[-1][1][0], inserted_count)
+
+    def test_accelerometer_cloud_preview_is_bounded_independently_from_dataset_cache(self) -> None:
+        tab = self._make_accelerometer_tab()
+        tab._dataset_records = []
+        tab._dataset_records_by_stream = {}
+        tab._dataset_cloud_records_by_stream = {}
+        tab._dataset_cloud_seen_by_stream = {}
+        tab._dataset_cloud_stride_by_stream = {}
+        tab._dataset_cloud_max_radius = 1.0
+        tab._recording_active = True
+        tab._is_data_tab_visible = lambda: False
+        inserted_count = DATA_CLOUD_PREVIEW_MAX_RECORDS_PER_STREAM * 4
+        for row_id in range(1, inserted_count + 1):
+            record = AccelerometerSampleRecord(
+                "raw_accelerometer",
+                "raw",
+                "Raw Accelerometer",
+                "builtin",
+                row_id,
+                row_id + 2,
+                row_id + 1,
+                float(row_id),
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                "",
+            )
+            AccelerometerTab.append_dataset_record(tab, row_id, record)
+
+        self.assertEqual(len(tab._dataset_records), inserted_count)
+        self.assertEqual(len(tab._dataset_records_by_stream["raw_accelerometer"]), inserted_count)
+        self.assertLessEqual(
+            len(tab._dataset_cloud_records_by_stream["raw_accelerometer"]),
+            DATA_CLOUD_PREVIEW_MAX_RECORDS_PER_STREAM,
+        )
+
+    def test_gyroscope_table_preview_is_bounded(self) -> None:
+        tab = self._make_gyroscope_tab()
+        inserted_count = DATA_TABLE_MAX_VISIBLE_ROWS + 120
+        for row_id in range(1, inserted_count + 1):
+            record = GyroscopeSampleRecord(
+                "raw_gyroscope",
+                "raw",
+                "Raw Gyroscope",
+                "builtin",
+                row_id,
+                row_id + 2,
+                row_id + 1,
+                float(row_id),
+                0.0,
+                0.0,
+                float(row_id),
+                "",
+            )
+            GyroscopeTab._insert_dataset_row(tab, row_id, record)
+
+        self.assertLessEqual(len(tab.data_tree.rows), DATA_TABLE_MAX_VISIBLE_ROWS)
+        self.assertEqual(tab._data_tree_visible_rows, len(tab.data_tree.rows))
+        self.assertEqual(tab.data_tree.rows[-1][1][0], inserted_count)
+
+
 class SensorWorkflowTests(unittest.TestCase):
     def _make_headless_app(self) -> VirtualControllerApp:
         app = object.__new__(VirtualControllerApp)
@@ -497,6 +620,19 @@ class SensorWorkflowTests(unittest.TestCase):
         app._remember_sensor_dialog_dir = lambda *_args, **_kwargs: None
         app._estimate_pc_event_ms_from_mcu = lambda timestamp: timestamp + 5
         return app
+
+    def _make_unified_imu_dataset(self) -> ImuDataset:
+        unified = ImuDataset("imu_test")
+        unified.extend(
+            [
+                ImuSampleRecord("raw_accelerometer", "raw", "Raw Accelerometer", "builtin", 100, 101, 100, acc_x=0.0, acc_y=0.0, acc_z=1.0),
+                ImuSampleRecord("raw_tilt", "raw", "Raw Tilt", "builtin", 100, 101, 100, acc_x=0.0, acc_y=0.0, acc_z=1.0, roll_deg=0.0, pitch_deg=0.0),
+                ImuSampleRecord("raw_gyroscope", "raw", "Raw Gyroscope", "builtin", 100, 101, 100, gyro_x=0.1, gyro_y=0.2, gyro_z=0.3),
+                ImuSampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 100, 101, 100, mag_x=1.0, mag_y=0.0, mag_z=0.5),
+                ImuSampleRecord("raw_heading", "raw", "Raw Heading", "builtin", 100, 101, 100, mag_x=1.0, mag_y=0.0, mag_z=0.5, heading=12.0),
+            ]
+        )
+        return unified
 
     def test_accelerometer_live_update_records_raw_sample(self) -> None:
         app = self._make_headless_app()
@@ -527,16 +663,7 @@ class SensorWorkflowTests(unittest.TestCase):
         )
 
     def test_loading_unified_dataset_activates_all_sensor_projections(self) -> None:
-        unified = ImuDataset("imu_test")
-        unified.extend(
-            [
-                ImuSampleRecord("raw_accelerometer", "raw", "Raw Accelerometer", "builtin", 100, 101, 100, acc_x=0.0, acc_y=0.0, acc_z=1.0),
-                ImuSampleRecord("raw_tilt", "raw", "Raw Tilt", "builtin", 100, 101, 100, acc_x=0.0, acc_y=0.0, acc_z=1.0, roll_deg=0.0, pitch_deg=0.0),
-                ImuSampleRecord("raw_gyroscope", "raw", "Raw Gyroscope", "builtin", 100, 101, 100, gyro_x=0.1, gyro_y=0.2, gyro_z=0.3),
-                ImuSampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 100, 101, 100, mag_x=1.0, mag_y=0.0, mag_z=0.5),
-                ImuSampleRecord("raw_heading", "raw", "Raw Heading", "builtin", 100, 101, 100, mag_x=1.0, mag_y=0.0, mag_z=0.5, heading=12.0),
-            ]
-        )
+        unified = self._make_unified_imu_dataset()
         app = self._make_headless_app()
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "imu.csv")
@@ -551,6 +678,28 @@ class SensorWorkflowTests(unittest.TestCase):
         self.assertEqual(len(app._acc_dataset.records), 2)
         self.assertEqual(len(app._gyro_dataset.records), 1)
         self.assertEqual(len(app._mag_dataset.records), 2)
+
+    def test_reloading_unified_dataset_after_clear_recreates_projection(self) -> None:
+        unified = self._make_unified_imu_dataset()
+        app = self._make_headless_app()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "imu.csv")
+            unified.to_csv(path)
+
+            self.assertEqual(app._load_magnetometer_dataset_paths((path,)), 1)
+            app._on_clear_magnetometer_datasets()
+            self.assertEqual(app._load_magnetometer_dataset_paths((path,)), 1)
+
+            self.assertEqual(app._load_sensor_dataset_paths("acc", (path,)), 1)
+            app._on_clear_accelerometer_datasets()
+            self.assertEqual(app._load_sensor_dataset_paths("acc", (path,)), 1)
+
+        self.assertIsNotNone(app._mag_dataset)
+        self.assertIsNotNone(app._acc_dataset)
+        self.assertIn(app._mag_dataset, app._mag_datasets)
+        self.assertIn(app._acc_dataset, app._acc_datasets)
+        self.assertEqual(len(app._mag_dataset.records), 2)
+        self.assertEqual(len(app._acc_dataset.records), 2)
 
     def test_gyroscope_live_update_records_raw_sample(self) -> None:
         app = self._make_headless_app()
@@ -584,9 +733,36 @@ class SensorWorkflowTests(unittest.TestCase):
         self.assertIsNotNone(app._acc_dataset)
         self.assertEqual(len(app._acc_dataset.records), 1)
         self.assertEqual(app._acc_dataset.records[0].stream_id, "raw_accelerometer")
+        self.assertTrue(app._acc_dataset.has_stream("raw_accelerometer"))
 
 
 class ImuDatasetTests(unittest.TestCase):
+    def test_imu_csv_stream_writer_drains_queue_on_close(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "streamed.csv")
+            writer = ImuCsvStreamWriter(path, flush_every_rows=100, max_queue_rows=5000)
+            for row_id in range(2000):
+                writer.append(
+                    ImuSampleRecord(
+                        "raw_magnetometer",
+                        "raw",
+                        "Raw Magnetometer",
+                        "builtin",
+                        row_id,
+                        row_id + 1,
+                        row_id,
+                        mag_x=float(row_id % 10),
+                        mag_y=0.0,
+                        mag_z=1.0,
+                        heading=0.0,
+                    )
+                )
+            writer.close()
+            reopened = ImuDataset.from_csv(path)
+
+        self.assertEqual(len(reopened.records), 2000)
+        self.assertEqual(reopened.records[-1].timestamp_mcu, 1999)
+
     def test_unified_dataset_roundtrip_and_projection(self) -> None:
         dataset = ImuDataset("imu_roundtrip", metadata={"schema_version": "1"})
         dataset.extend(
@@ -605,6 +781,9 @@ class ImuDatasetTests(unittest.TestCase):
             reopened = ImuDataset.from_csv(path)
 
         self.assertEqual(len(reopened.records), 5)
+        self.assertTrue(reopened.has_stream("raw_magnetometer"))
+        self.assertTrue(reopened.has_stream("raw_gyroscope"))
+        self.assertEqual(reopened.summary()["source_count"], "5")
         self.assertEqual(len(reopened.project_accelerometer_dataset().records), 2)
         self.assertEqual(len(reopened.project_gyroscope_dataset().records), 1)
         self.assertEqual(len(reopened.project_magnetometer_dataset().records), 2)
