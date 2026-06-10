@@ -239,11 +239,19 @@ def _project_points_to_plane(
     return projected
 
 
+def _coordinate_scale(projected_points: list[tuple[float, float]]) -> float:
+    scale = max((max(abs(x_val), abs(y_val)) for x_val, y_val in projected_points), default=0.0)
+    return scale if scale > 1.0 else 1.0
+
+
 def _fit_ellipse_center(projected_points: list[tuple[float, float]]) -> tuple[float, float]:
     normal = [[0.0 for _ in range(5)] for _ in range(5)]
     rhs = [0.0 for _ in range(5)]
+    coordinate_scale = _coordinate_scale(projected_points)
 
     for x_val, y_val in projected_points:
+        x_val /= coordinate_scale
+        y_val /= coordinate_scale
         row = [x_val * x_val, x_val * y_val, y_val * y_val, x_val, y_val]
         for row_idx in range(5):
             rhs[row_idx] += row[row_idx]
@@ -259,7 +267,7 @@ def _fit_ellipse_center(projected_points: list[tuple[float, float]]) -> tuple[fl
 
     center_x = (coeff_b * coeff_e - 2.0 * coeff_c * coeff_d) / det
     center_y = (coeff_b * coeff_d - 2.0 * coeff_a * coeff_e) / det
-    return (center_x, center_y)
+    return (center_x * coordinate_scale, center_y * coordinate_scale)
 
 
 def _extract_raw_points(dataset) -> list[tuple[float, float, float]]:

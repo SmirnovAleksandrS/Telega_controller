@@ -1,6 +1,6 @@
 {
   "com": {
-    "port": "/dev/ttyACM0",
+    "port": "/dev/ttyUSB0",
     "baud": 460800
   },
   "deviation": {
@@ -102,8 +102,10 @@
     ]
   },
   "magnetometer": {
-    "datasets": [],
-    "active_dataset_path": "",
+    "datasets": [
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv"
+    ],
+    "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
     "sources": {
       "raw_magnetometer": {
         "show": true,
@@ -152,9 +154,42 @@
           "calibrate": {},
           "process": {}
         }
+      },
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/ets2DMethod.py",
+        "show": true,
+        "record": false,
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
+      },
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/ets3DMethod.py",
+        "show": true,
+        "record": false,
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
+      },
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/headingHillMethod.py",
+        "show": true,
+        "record": false,
+        "realtime_enabled": false,
+        "params_profile_path": "",
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
       }
     ],
-    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/analyticGeometryTransform2D.py",
+    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/headingHillMethod.py",
     "primary_heading": {
       "kind": "raw"
     },
@@ -173,7 +208,7 @@
       }
     },
     "file_dialog_dirs": {
-      "dataset": "/home/necrosii/Programming/Python/Mag_data_generator/output",
+      "dataset": "/home/necrosii/Programming/Python/Telega_controller/datasets",
       "params": "/home/necrosii/Programming/Python/Telega_controller",
       "plugin": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer",
       "metrics": ""
@@ -181,19 +216,21 @@
   },
   "accelerometer": {
     "datasets": [
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_hill_forward_and_backward.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill2.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest3_withGNSS.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest2.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest_lowFreq.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/stabilityTest.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/test1.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest3.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_imu.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/rotation.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_imu2.csv",
-      "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill.csv"
+      "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/straight_line_with_hills.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/stright_line_forward.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib_2.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calib_sphera_all_dimensions.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_heading_hill_ring_forward_backward_marked.csv"
     ],
-    "active_dataset_path": "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill2.csv",
+    "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
     "sources": {
       "raw_accelerometer": {
         "show": true,
@@ -236,7 +273,7 @@
       }
     },
     "file_dialog_dirs": {
-      "dataset": "/home/necrosii/Programming/Python/Mag_data_generator/output",
+      "dataset": "/home/necrosii/Programming/Python/Telega_controller/datasets",
       "params": "",
       "plugin": "/home/necrosii/Programming/Python/Telega_controller/externModules/accelerometer",
       "metrics": ""
@@ -244,19 +281,21 @@
   },
   "gyroscope": {
     "datasets": [
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_hill_forward_and_backward.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill2.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest3_withGNSS.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest2.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest_lowFreq.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/stabilityTest.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/test1.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/StabilityTest3.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_imu.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/rotation.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_imu2.csv",
-      "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill.csv"
+      "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/straight_line_with_hills.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/stright_line_forward.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib_2.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calib_sphera_all_dimensions.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_heading_hill_ring_forward_backward_marked.csv"
     ],
-    "active_dataset_path": "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill2.csv",
+    "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
     "sources": {
       "raw_gyroscope": {
         "show": true,
@@ -294,7 +333,7 @@
       }
     },
     "file_dialog_dirs": {
-      "dataset": "/home/necrosii/Programming/Python/Mag_data_generator/output",
+      "dataset": "/home/necrosii/Programming/Python/Telega_controller/datasets",
       "params": "",
       "plugin": "/home/necrosii/Programming/Python/Telega_controller/externModules/gyroscope",
       "metrics": ""

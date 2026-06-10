@@ -577,6 +577,207 @@ class MagnetometerPluginLoaderTests(unittest.TestCase):
         for radius in corrected_radii:
             self.assertAlmostEqual(radius, major_radius, places=5)
 
+    def test_external_plane_ellipse_methods_handle_large_coordinate_scale(self) -> None:
+        center = (12000.0, -7000.0, 2500.0)
+        major_radius = 8000.0
+        minor_radius = 4200.0
+
+        records: list[SampleRecord] = []
+        for idx in range(180):
+            angle = 2.0 * math.pi * idx / 180.0
+            records.append(
+                SampleRecord(
+                    stream_id="raw_magnetometer",
+                    stream_type="raw",
+                    producer_name="Raw Magnetometer",
+                    producer_version="builtin",
+                    timestamp_mcu=3000 + idx,
+                    timestamp_pc_rx=4000 + idx,
+                    timestamp_pc_est=3500 + idx,
+                    mag_x=center[0] + major_radius * math.cos(angle),
+                    mag_y=center[1] + minor_radius * math.sin(angle),
+                    mag_z=center[2],
+                    heading=None,
+                    flags="",
+                )
+            )
+
+        dataset = Dataset("large_scale_ellipse", records=records)
+        method_paths = (
+            "externModules/magnetometer/simpleHardIroning.py",
+            "externModules/magnetometer/improvedAffineMethod.py",
+        )
+
+        for method_path in method_paths:
+            with self.subTest(method_path=method_path):
+                plugin = load_method_plugin(method_path)
+                calibration = run_method_calibration(plugin, dataset)
+
+                diagnostic = calibration.diagnostics.error_text if calibration.diagnostics else ""
+                self.assertTrue(calibration.ok, diagnostic)
+                assert calibration.params is not None
+                params = calibration.params["params"]
+                self.assertAlmostEqual(params["offset_x"], center[0], places=5)
+                self.assertAlmostEqual(params["offset_y"], center[1], places=5)
+                self.assertAlmostEqual(params["offset_z"], center[2], places=5)
+                if method_path.endswith("improvedAffineMethod.py"):
+                    self.assertAlmostEqual(params["major_radius"], major_radius, places=5)
+                    self.assertAlmostEqual(params["minor_radius"], minor_radius, places=5)
+
+    def test_external_ets_2d_method_calibrates_synthetic_ellipse(self) -> None:
+        plugin = load_method_plugin("externModules/magnetometer/ets2DMethod.py")
+        self.assertEqual(plugin.status, "ready")
+
+        field_radius = 50.0
+        offset = (12.0, -7.0)
+        a_scale = 1.25
+        b_scale = 0.80
+        rho = math.radians(20.0)
+        l_matrix = (
+            (a_scale, 0.0),
+            (b_scale * math.sin(rho), b_scale * math.cos(rho)),
+        )
+
+        records: list[SampleRecord] = []
+        for idx in range(180):
+            angle = 2.0 * math.pi * idx / 180.0
+            bx = field_radius * math.cos(angle)
+            by = field_radius * math.sin(angle)
+            raw_x = offset[0] + l_matrix[0][0] * bx + l_matrix[0][1] * by
+            raw_y = offset[1] + l_matrix[1][0] * bx + l_matrix[1][1] * by
+            records.append(
+                SampleRecord(
+                    stream_id="raw_magnetometer",
+                    stream_type="raw",
+                    producer_name="Raw Magnetometer",
+                    producer_version="builtin",
+                    timestamp_mcu=5000 + idx,
+                    timestamp_pc_rx=6000 + idx,
+                    timestamp_pc_est=5500 + idx,
+                    mag_x=raw_x,
+                    mag_y=raw_y,
+                    mag_z=3.0,
+                    heading=None,
+                    flags="",
+                )
+            )
+
+        dataset = Dataset("ets_2d_ellipse", records=records)
+        calibration = run_method_calibration(
+            plugin,
+            dataset,
+            config={"field_radius": field_radius, "robust": "none"},
+        )
+
+        self.assertTrue(calibration.ok)
+        assert calibration.params is not None
+        self.assertIn("ETS rho_deg:", calibration.report)
+        params = calibration.params["params"]
+        self.assertAlmostEqual(params["offset_x"], offset[0], places=6)
+        self.assertAlmostEqual(params["offset_y"], offset[1], places=6)
+        self.assertLess(params["rel_rms_residual"], 1e-8)
+
+        for record in records[:24]:
+            result = run_method_process(
+                plugin,
+                {
+                    "timestamp_mcu": record.timestamp_mcu,
+                    "timestamp_pc_rx": record.timestamp_pc_rx,
+                    "timestamp_pc_est": record.timestamp_pc_est,
+                    "mag_x": record.mag_x,
+                    "mag_y": record.mag_y,
+                    "mag_z": record.mag_z,
+                    "heading": record.heading,
+                    "flags": record.flags,
+                },
+                calibration.params,
+            )
+            self.assertTrue(result.ok)
+            assert result.output is not None
+            self.assertAlmostEqual(math.hypot(result.output["mag_x"], result.output["mag_y"]), field_radius, places=6)
+            self.assertAlmostEqual(result.output["mag_z"], 3.0, places=6)
+
+    def test_external_ets_3d_method_calibrates_synthetic_ellipsoid(self) -> None:
+        plugin = load_method_plugin("externModules/magnetometer/ets3DMethod.py")
+        self.assertEqual(plugin.status, "ready")
+
+        field_radius = 50.0
+        offset = (12.0, -7.0, 4.5)
+        l_matrix = (
+            (1.15, 0.08, -0.04),
+            (0.02, 0.85, 0.07),
+            (-0.03, 0.05, 1.35),
+        )
+        golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+
+        records: list[SampleRecord] = []
+        for idx in range(240):
+            z_unit = 1.0 - 2.0 * (idx + 0.5) / 240.0
+            xy_radius = math.sqrt(max(0.0, 1.0 - z_unit * z_unit))
+            angle = idx * golden_angle
+            bx = field_radius * xy_radius * math.cos(angle)
+            by = field_radius * xy_radius * math.sin(angle)
+            bz = field_radius * z_unit
+            raw_x = offset[0] + l_matrix[0][0] * bx + l_matrix[0][1] * by + l_matrix[0][2] * bz
+            raw_y = offset[1] + l_matrix[1][0] * bx + l_matrix[1][1] * by + l_matrix[1][2] * bz
+            raw_z = offset[2] + l_matrix[2][0] * bx + l_matrix[2][1] * by + l_matrix[2][2] * bz
+            records.append(
+                SampleRecord(
+                    stream_id="raw_magnetometer",
+                    stream_type="raw",
+                    producer_name="Raw Magnetometer",
+                    producer_version="builtin",
+                    timestamp_mcu=7000 + idx,
+                    timestamp_pc_rx=8000 + idx,
+                    timestamp_pc_est=7500 + idx,
+                    mag_x=raw_x,
+                    mag_y=raw_y,
+                    mag_z=raw_z,
+                    heading=None,
+                    flags="",
+                )
+            )
+
+        dataset = Dataset("ets_3d_ellipsoid", records=records)
+        calibration = run_method_calibration(
+            plugin,
+            dataset,
+            config={"field_radius": field_radius, "robust": "none"},
+        )
+
+        self.assertTrue(calibration.ok)
+        assert calibration.params is not None
+        self.assertIn("3D coverage ratio:", calibration.report)
+        params = calibration.params["params"]
+        self.assertAlmostEqual(params["offset_x"], offset[0], places=5)
+        self.assertAlmostEqual(params["offset_y"], offset[1], places=5)
+        self.assertAlmostEqual(params["offset_z"], offset[2], places=5)
+        self.assertLess(params["rel_rms_residual"], 1e-8)
+
+        for record in records[:24]:
+            result = run_method_process(
+                plugin,
+                {
+                    "timestamp_mcu": record.timestamp_mcu,
+                    "timestamp_pc_rx": record.timestamp_pc_rx,
+                    "timestamp_pc_est": record.timestamp_pc_est,
+                    "mag_x": record.mag_x,
+                    "mag_y": record.mag_y,
+                    "mag_z": record.mag_z,
+                    "heading": record.heading,
+                    "flags": record.flags,
+                },
+                calibration.params,
+            )
+            self.assertTrue(result.ok)
+            assert result.output is not None
+            corrected_radius = math.sqrt(
+                result.output["mag_x"] * result.output["mag_x"]
+                + result.output["mag_y"] * result.output["mag_y"]
+                + result.output["mag_z"] * result.output["mag_z"]
+            )
+            self.assertAlmostEqual(corrected_radius, field_radius, places=5)
+
     def test_external_improved_affine_method_calibrates_tilted_near_circular_ellipse(self) -> None:
         plugin = load_method_plugin("externModules/magnetometer/improvedAffineMethod.py")
         self.assertEqual(plugin.status, "ready")
@@ -709,6 +910,170 @@ class MagnetometerPluginLoaderTests(unittest.TestCase):
         for radius in corrected_xy_radii:
             self.assertAlmostEqual(radius, major_radius, places=4)
         self.assertLess(max(corrected_z_values), 1e-5)
+
+    def test_external_heading_hill_method_calibrates_synthetic_hill_passes(self) -> None:
+        plugin = load_method_plugin("externModules/magnetometer/headingHillMethod.py")
+        self.assertEqual(plugin.status, "ready")
+
+        center = (12.0, -7.0)
+        scale = 80.0
+        k_ratio = 0.35
+        eta = (0.18, -0.11)
+        gamma_forward = math.radians(35.0)
+        gamma_backward = gamma_forward + math.pi
+
+        records: list[SampleRecord] = []
+        accel_records: list[dict[str, object]] = []
+
+        def add_sample(idx: int, r_x: float, r_y: float, pitch_deg: float, flags: str) -> None:
+            mag_x = center[0] + scale * r_x
+            mag_y = center[1] + scale * r_y
+            timestamp = 1000 + idx
+            records.append(
+                SampleRecord(
+                    stream_id="raw_magnetometer",
+                    stream_type="raw",
+                    producer_name="Raw Magnetometer",
+                    producer_version="builtin",
+                    timestamp_mcu=timestamp,
+                    timestamp_pc_rx=timestamp + 5,
+                    timestamp_pc_est=timestamp + 3,
+                    mag_x=mag_x,
+                    mag_y=mag_y,
+                    mag_z=0.0,
+                    heading=None,
+                    flags=flags,
+                )
+            )
+            accel_records.append(
+                {
+                    "stream_id": "raw_tilt",
+                    "stream_type": "raw",
+                    "timestamp_mcu": timestamp,
+                    "timestamp_pc_rx": timestamp + 5,
+                    "timestamp_pc_est": timestamp + 3,
+                    "acc_x": 0.0,
+                    "acc_y": 0.0,
+                    "acc_z": 1.0,
+                    "pitch_deg": pitch_deg,
+                    "roll_deg": 0.0,
+                    "flags": flags,
+                }
+            )
+
+        for idx in range(144):
+            angle = 2.0 * math.pi * idx / 144.0
+            add_sample(idx, math.cos(angle), math.sin(angle), 0.0, "ring")
+
+        def hill_point(gamma: float, theta: float) -> tuple[float, float]:
+            cos_gamma = math.cos(gamma)
+            ideal_x = cos_gamma * math.cos(theta) + k_ratio * math.sin(theta)
+            ideal_y = math.sin(gamma)
+            z_val = -cos_gamma * math.sin(theta) + k_ratio * (math.cos(theta) - 1.0)
+            return (ideal_x + eta[0] * z_val, ideal_y + eta[1] * z_val)
+
+        base_idx = 144
+        pitch_profile = [0.0, 2.0, 4.0, 7.0, 10.0, 13.0, 16.0, 13.0, 10.0, 7.0, 4.0, 2.0, 0.0]
+        for pass_name, gamma in (("hill_forward", gamma_forward), ("hill_backward", gamma_backward)):
+            for pitch_deg in pitch_profile:
+                theta = math.radians(pitch_deg)
+                r_x, r_y = hill_point(gamma, theta)
+                add_sample(base_idx, r_x, r_y, pitch_deg, pass_name)
+                base_idx += 1
+
+        dataset = Dataset("heading_hill_synthetic", records=records)
+        mag_records = [
+            {
+                "timestamp_mcu": record.timestamp_mcu,
+                "timestamp_pc_rx": record.timestamp_pc_rx,
+                "timestamp_pc_est": record.timestamp_pc_est,
+                "mag_x": record.mag_x,
+                "mag_y": record.mag_y,
+                "mag_z": record.mag_z,
+                "heading": record.heading,
+                "flags": record.flags,
+            }
+            for record in records
+        ]
+        config = {
+            "stream_inputs": {
+                "mag_input": {"records": mag_records},
+                "accel_input": {"records": accel_records},
+            },
+            "vertical_horizontal_ratio": k_ratio,
+            "robust": "none",
+            "max_sync_delta_ms": 10.0,
+        }
+
+        calibration = run_method_calibration(plugin, dataset, config=config)
+
+        self.assertTrue(calibration.ok)
+        assert calibration.params is not None
+        params = calibration.params["params"]
+        self.assertAlmostEqual(params["eta_x"], eta[0], places=3)
+        self.assertAlmostEqual(params["eta_y"], eta[1], places=3)
+        self.assertLess(params["hill_rms_after"], params["hill_rms_before"])
+        self.assertGreater(params["hill_improvement_gain"], 0.9)
+        self.assertIn("Hill samples:", calibration.report)
+
+        sample_index = 144 + 6
+        result = run_method_process(
+            plugin,
+            {
+                **mag_records[sample_index],
+                "inputs": {"accel_input": accel_records[sample_index]},
+            },
+            calibration.params,
+        )
+
+        self.assertTrue(result.ok)
+        assert result.output is not None
+        theta = math.radians(pitch_profile[6])
+        expected_x = math.cos(gamma_forward) * math.cos(theta) + k_ratio * math.sin(theta)
+        expected_y = math.sin(gamma_forward)
+        expected_heading = (math.degrees(math.atan2(expected_x, expected_y)) + 360.0) % 360.0
+        self.assertAlmostEqual(result.output["mag_x"] / scale, expected_x, delta=0.002)
+        self.assertAlmostEqual(result.output["mag_y"] / scale, expected_y, delta=0.002)
+        self.assertAlmostEqual(result.output["heading"], expected_heading, delta=0.1)
+
+    def test_heading_hill_timestamp_pitch_index_matches_linear_lookup(self) -> None:
+        from externModules.magnetometer import headingHillMethod as method
+
+        accel_records = [
+            {"timestamp_mcu": 3000, "pitch_deg": 30.0},
+            {"timestamp_mcu": 1000, "pitch_deg": 10.0},
+            {"timestamp_mcu": 2000, "pitch_deg": 20.0},
+        ]
+        accel_timestamps, accel_pitches, indexed_pitches = method._build_accel_pitch_index(accel_records)
+        mag_records = [
+            {"timestamp_mcu": 990},
+            {"timestamp_mcu": 1510},
+            {"timestamp_mcu": 2600},
+            {"pitch_deg": -5.0, "timestamp_mcu": 2500},
+        ]
+
+        for index, record in enumerate(mag_records):
+            legacy = method._aligned_pitch_deg(record, accel_records, index, 750.0)
+            indexed = method._aligned_pitch_deg_indexed(
+                record,
+                index,
+                750.0,
+                accel_timestamps,
+                accel_pitches,
+                indexed_pitches,
+            )
+            self.assertEqual(indexed, legacy)
+
+        self.assertIsNone(
+            method._aligned_pitch_deg_indexed(
+                {"timestamp_mcu": 5000},
+                0,
+                100.0,
+                accel_timestamps,
+                accel_pitches,
+                indexed_pitches,
+            )
+        )
 
 
 if __name__ == "__main__":

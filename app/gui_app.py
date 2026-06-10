@@ -2516,11 +2516,46 @@ class VirtualControllerApp:
                 pass
         return any(record.stream_id == stream_id for record in active_dataset.records)
 
+    def _magnetometer_paired_accelerometer_dataset(self, dataset: Dataset | None = None) -> AccelerometerDataset | None:
+        self._ensure_shared_imu_state()
+        active_dataset = getattr(self, "_mag_dataset", None) if dataset is None else dataset
+        if active_dataset is not None and self._is_shared_projection_dataset(active_dataset):
+            shared_dataset = self._find_shared_imu_dataset(active_dataset)
+            if shared_dataset is not None:
+                projection_key = (shared_dataset.source_path or "", shared_dataset.summary()["name"])
+                for candidate in self._acc_datasets:
+                    if self._shared_projection_key(candidate) == projection_key:
+                        return candidate
+        return getattr(self, "_acc_dataset", None)
+
+    def _magnetometer_has_accelerometer_stream(self, dataset: Dataset | None = None) -> bool:
+        acc_dataset = self._magnetometer_paired_accelerometer_dataset(dataset)
+        if acc_dataset is None:
+            return False
+        return (
+            self._sensor_dataset_has_stream("acc", "raw_accelerometer", acc_dataset)
+            or self._sensor_dataset_has_stream("acc", "raw_tilt", acc_dataset)
+        )
+
     def _builtin_calibration_producers(self, dataset: Dataset | None = None) -> dict[str, StreamProducerDescriptor]:
         active_dataset = getattr(self, "_mag_dataset", None) if dataset is None else dataset
         raw_mag_active = True
         raw_heading_active = True
-        accel_active = make_builtin_producer_id("imu_accel") in self._calibration_stream_snapshots
+        paired_acc_dataset = self._magnetometer_paired_accelerometer_dataset(active_dataset)
+        raw_acc_active = (
+            self._sensor_dataset_has_stream("acc", "raw_accelerometer", paired_acc_dataset)
+            or make_builtin_producer_id("raw_accelerometer") in self._calibration_stream_snapshots
+        )
+        raw_tilt_active = (
+            self._sensor_dataset_has_stream("acc", "raw_tilt", paired_acc_dataset)
+            or self._sensor_dataset_has_stream("acc", "raw_accelerometer", paired_acc_dataset)
+            or make_builtin_producer_id("raw_tilt") in self._calibration_stream_snapshots
+            or make_builtin_producer_id("raw_accelerometer") in self._calibration_stream_snapshots
+        )
+        legacy_accel_active = (
+            make_builtin_producer_id("imu_accel") in self._calibration_stream_snapshots
+            or self._magnetometer_has_accelerometer_stream(active_dataset)
+        )
         gyro_active = make_builtin_producer_id("imu_gyro") in self._calibration_stream_snapshots
         tacho_active = make_builtin_producer_id("tacho_pair") in self._calibration_stream_snapshots
         motor_active = make_builtin_producer_id("motor_telemetry") in self._calibration_stream_snapshots
@@ -2560,15 +2595,35 @@ class VirtualControllerApp:
                 active=gnss_active,
                 details={"source": "D4.heading"},
             ),
+            make_builtin_producer_id("raw_tilt"): StreamProducerDescriptor(
+                producer_id=make_builtin_producer_id("raw_tilt"),
+                kind="imu.accel_vector",
+                title="Raw Tilt",
+                stream_id="raw_tilt",
+                stream_type="raw",
+                origin="builtin",
+                active=raw_tilt_active,
+                details={"source": "built-in tilt from D0.accel", "source_sensor": "acc"},
+            ),
+            make_builtin_producer_id("raw_accelerometer"): StreamProducerDescriptor(
+                producer_id=make_builtin_producer_id("raw_accelerometer"),
+                kind="imu.accel_vector",
+                title="Raw Accelerometer",
+                stream_id="raw_accelerometer",
+                stream_type="raw",
+                origin="builtin",
+                active=raw_acc_active,
+                details={"source": "D0.accel", "source_sensor": "acc"},
+            ),
             make_builtin_producer_id("imu_accel"): StreamProducerDescriptor(
                 producer_id=make_builtin_producer_id("imu_accel"),
                 kind="imu.accel_vector",
-                title="Raw Accelerometer",
+                title="Live IMU Accelerometer",
                 stream_id="imu_accel",
                 stream_type="raw",
                 origin="builtin",
-                active=accel_active,
-                details={"source": "D0.accel"},
+                active=legacy_accel_active,
+                details={"source": "D0.accel", "source_sensor": "acc", "legacy_alias": True},
             ),
             make_builtin_producer_id("imu_gyro"): StreamProducerDescriptor(
                 producer_id=make_builtin_producer_id("imu_gyro"),
@@ -2646,6 +2701,7 @@ class VirtualControllerApp:
     def _magnetometer_calibration_producers(self, dataset: Dataset | None = None) -> dict[str, StreamProducerDescriptor]:
         producers = self._builtin_calibration_producers(dataset)
         producers.update(self._method_calibration_producers())
+        producers.update(self._sensor_method_calibration_producers("acc"))
         return producers
 
     def _effective_magnetometer_stream_bindings(
@@ -2812,8 +2868,31 @@ class VirtualControllerApp:
     def _adapt_magnetometer_record_for_producer(
         self,
         producer: StreamProducerDescriptor,
-        record: SampleRecord,
+        record: Any,
     ) -> dict[str, Any]:
+        if producer.kind == "imu.accel_vector":
+            payload = dict(record) if isinstance(record, dict) else self._build_sensor_sample_from_record("acc", record)
+            acc_x = payload.get("acc_x", payload.get("accel_x"))
+            acc_y = payload.get("acc_y", payload.get("accel_y"))
+            acc_z = payload.get("acc_z", payload.get("accel_z"))
+            if acc_x is not None:
+                payload["acc_x"] = acc_x
+                payload["accel_x"] = acc_x
+            if acc_y is not None:
+                payload["acc_y"] = acc_y
+                payload["accel_y"] = acc_y
+            if acc_z is not None:
+                payload["acc_z"] = acc_z
+                payload["accel_z"] = acc_z
+            if payload.get("roll_deg") is None or payload.get("pitch_deg") is None:
+                roll_deg, pitch_deg = compute_accelerometer_tilt_deg(
+                    float(payload["acc_x"]),
+                    float(payload["acc_y"]),
+                    float(payload["acc_z"]),
+                )
+                payload["roll_deg"] = roll_deg
+                payload["pitch_deg"] = pitch_deg
+            return payload
         payload = self._build_magnetometer_sample_from_record(record)
         if producer.kind == "heading.deg" and payload.get("heading") is None:
             payload["heading"] = compute_raw_heading_deg(float(record.mag_x), float(record.mag_y))
@@ -2823,7 +2902,7 @@ class VirtualControllerApp:
         self,
         producer: StreamProducerDescriptor,
         dataset: Dataset,
-    ) -> list[SampleRecord]:
+    ) -> list[Any]:
         if producer.stream_id == "raw_magnetometer":
             return self._raw_magnetometer_dataset_records(dataset)
         if producer.stream_id == "raw_heading":
@@ -2831,6 +2910,25 @@ class VirtualControllerApp:
             return records if records else self._raw_magnetometer_dataset_records(dataset)
         if producer.stream_id == "gnss_heading":
             return [record for record in dataset.records if record.stream_id == "gnss_heading"]
+        if producer.stream_id == "raw_accelerometer":
+            acc_dataset = self._magnetometer_paired_accelerometer_dataset(dataset)
+            if acc_dataset is None:
+                return []
+            return self._sensor_raw_dataset_records("acc", acc_dataset)
+        if producer.stream_id == "raw_tilt":
+            acc_dataset = self._magnetometer_paired_accelerometer_dataset(dataset)
+            if acc_dataset is None:
+                return []
+            records = [record for record in acc_dataset.records if record.stream_id == "raw_tilt"]
+            return records if records else self._sensor_raw_dataset_records("acc", acc_dataset)
+        if producer.stream_id == "imu_accel":
+            acc_dataset = self._magnetometer_paired_accelerometer_dataset(dataset)
+            if acc_dataset is None:
+                return []
+            records = self._sensor_raw_dataset_records("acc", acc_dataset)
+            if records:
+                return records
+            return [record for record in acc_dataset.records if record.stream_id == "raw_tilt"]
         return []
 
     def _build_process_sample_from_inputs(
@@ -2948,6 +3046,17 @@ class VirtualControllerApp:
             return self._records_for_builtin_producer(producer, dataset)
         if producer.producer_id in cache:
             return list(cache[producer.producer_id])
+        if str(producer.details.get("source_sensor", "")) == "acc":
+            acc_dataset = self._magnetometer_paired_accelerometer_dataset(dataset)
+            if acc_dataset is None:
+                return []
+            return self._dataset_records_for_sensor_stream_producer(
+                "acc",
+                producer,
+                acc_dataset,
+                cache=cache,
+                stack=stack,
+            )
         records = [record for record in dataset.records if record.stream_id == producer.stream_id]
         if records:
             cache[producer.producer_id] = list(records)

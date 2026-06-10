@@ -258,6 +258,11 @@ def _project_points_to_plane(
     return projected
 
 
+def _coordinate_scale(projected_points: list[tuple[float, float]]) -> float:
+    scale = max((max(abs(x_val), abs(y_val)) for x_val, y_val in projected_points), default=0.0)
+    return scale if scale > 1.0 else 1.0
+
+
 def _fit_ellipse_parameters(
     projected_points: list[tuple[float, float]],
     *,
@@ -265,6 +270,7 @@ def _fit_ellipse_parameters(
 ) -> dict[str, float]:
     normal = [[0.0 for _ in range(5)] for _ in range(5)]
     rhs = [0.0 for _ in range(5)]
+    coordinate_scale = _coordinate_scale(projected_points)
 
     if weights is None:
         weights = [1.0] * len(projected_points)
@@ -272,6 +278,8 @@ def _fit_ellipse_parameters(
         raise ValueError("weights length must match projected_points length")
 
     for (x_val, y_val), weight in zip(projected_points, weights):
+        x_val /= coordinate_scale
+        y_val /= coordinate_scale
         row = [x_val * x_val, x_val * y_val, y_val * y_val, x_val, y_val]
         for row_idx in range(5):
             rhs[row_idx] += weight * row[row_idx]
@@ -285,8 +293,10 @@ def _fit_ellipse_parameters(
     if det < 0.0:
         raise ValueError("fitted conic is not an ellipse")
 
-    center_x = (coeff_b * coeff_e - 2.0 * coeff_c * coeff_d) / det
-    center_y = (coeff_b * coeff_d - 2.0 * coeff_a * coeff_e) / det
+    center_x_normalized = (coeff_b * coeff_e - 2.0 * coeff_c * coeff_d) / det
+    center_y_normalized = (coeff_b * coeff_d - 2.0 * coeff_a * coeff_e) / det
+    center_x = center_x_normalized * coordinate_scale
+    center_y = center_y_normalized * coordinate_scale
 
     q_matrix = [
         [coeff_a, 0.5 * coeff_b],
@@ -294,8 +304,10 @@ def _fit_ellipse_parameters(
     ]
     linear = [coeff_d, coeff_e]
     center_q_center = (
-        center_x * (q_matrix[0][0] * center_x + q_matrix[0][1] * center_y)
-        + center_y * (q_matrix[1][0] * center_x + q_matrix[1][1] * center_y)
+        center_x_normalized
+        * (q_matrix[0][0] * center_x_normalized + q_matrix[0][1] * center_y_normalized)
+        + center_y_normalized
+        * (q_matrix[1][0] * center_x_normalized + q_matrix[1][1] * center_y_normalized)
     )
     scale = center_q_center + 1.0
     if scale <= ELLIPSE_FIT_EPS:
@@ -307,7 +319,7 @@ def _fit_ellipse_parameters(
 
     radii: list[tuple[float, tuple[float, float]]] = []
     for idx in range(2):
-        radius = math.sqrt(scale / eigenvalues[idx])
+        radius = math.sqrt(scale / eigenvalues[idx]) * coordinate_scale
         vector = tuple(eigenvectors[idx])
         length = math.hypot(vector[0], vector[1])
         if length <= ELLIPSE_FIT_EPS:
@@ -323,6 +335,7 @@ def _fit_ellipse_parameters(
     theta = math.atan2(major_axis[1], major_axis[0])
     cos_theta = math.cos(theta)
     sin_theta = math.sin(theta)
+    coordinate_scale_sq = coordinate_scale * coordinate_scale
 
     return {
         "center_x": center_x,
@@ -334,11 +347,11 @@ def _fit_ellipse_parameters(
         "major_scale": 1.0,
         "minor_scale": major_radius / minor_radius,
         "axis_ratio": major_radius / minor_radius,
-        "ellipse_a": coeff_a,
-        "ellipse_b": coeff_b,
-        "ellipse_c": coeff_c,
-        "ellipse_d": coeff_d,
-        "ellipse_e": coeff_e,
+        "ellipse_a": coeff_a / coordinate_scale_sq,
+        "ellipse_b": coeff_b / coordinate_scale_sq,
+        "ellipse_c": coeff_c / coordinate_scale_sq,
+        "ellipse_d": coeff_d / coordinate_scale,
+        "ellipse_e": coeff_e / coordinate_scale,
     }
 
 

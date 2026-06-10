@@ -8,6 +8,7 @@ import tempfile
 import types
 import unittest
 
+from app.accelerometer_dataset import AccelerometerDataset, AccelerometerSampleRecord
 from app.calibration_streams import SCOPE_CALIBRATE, infer_stream_requirements, make_method_producer_id
 from app.dialogs import format_method_info_text
 from app.gui_app import VirtualControllerApp
@@ -1598,6 +1599,209 @@ class GuiControlRoutingTests(unittest.TestCase):
         self.assertEqual(len(derived_records), 2)
         self.assertEqual((derived_records[0].mag_x, derived_records[0].mag_y, derived_records[0].mag_z), (8.0, 2.0, 2.0))
         self.assertEqual((derived_records[1].mag_x, derived_records[1].mag_y, derived_records[1].mag_z), (14.0, 4.0, 2.0))
+
+    def test_magnetometer_calibration_resolver_exports_paired_accelerometer_records(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app._mag_sources = app._default_magnetometer_sources()
+        app._mag_selected_source_id = "raw_magnetometer"
+        app._mag_dataset = Dataset(
+            "session.csv",
+            records=[
+                SampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 100, 110, 108, 5.0, 2.0, 1.0, 68.0, "")
+            ],
+        )
+        app._mag_datasets = [app._mag_dataset]
+        app._acc_dataset = AccelerometerDataset(
+            "session.csv",
+            records=[
+                AccelerometerSampleRecord(
+                    "raw_accelerometer",
+                    "raw",
+                    "Raw Accelerometer",
+                    "builtin",
+                    100,
+                    110,
+                    108,
+                    0.0,
+                    0.0,
+                    1.0,
+                    None,
+                    None,
+                    "",
+                )
+            ],
+        )
+        app._acc_datasets = [app._acc_dataset]
+        app._gyro_dataset = None
+        app._gyro_datasets = []
+        app._imu_dataset = None
+        app._imu_datasets = []
+        app._calibration_stream_snapshots = {}
+        app._mag_methods = {}
+
+        plugin = LoadedMethodPlugin(
+            method_id="method_hill",
+            name="Heading Hill",
+            version="1.0.0",
+            file_path="/tmp/heading_hill.py",
+            info={
+                "name": "Heading Hill",
+                "version": "1.0.0",
+                "type": "method",
+                "supports_calibrate": True,
+                "supports_load_params": True,
+                "supports_save_params": True,
+                "supports_process": True,
+                "input_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "output_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "stream_requirements": {
+                    "calibrate": [
+                        {"slot": "mag_input", "kind": "imu.magnetometer_vector", "required": True},
+                        {"slot": "accel_input", "kind": "imu.accel_vector", "required": True},
+                    ]
+                },
+            },
+            module=types.SimpleNamespace(),
+            status="ready",
+        )
+        plugin.stream_requirements = infer_stream_requirements(plugin.info)
+        app._mag_methods = {plugin.method_id: plugin}
+
+        resolver = VirtualControllerApp._build_magnetometer_calibration_resolver(app, plugin, app._mag_dataset)
+        inputs = resolver.export_inputs(plugin.stream_requirements[SCOPE_CALIBRATE])
+
+        self.assertEqual(len(inputs["accel_input"]["records"]), 1)
+        accel_payload = inputs["accel_input"]["records"][0]
+        self.assertAlmostEqual(accel_payload["pitch_deg"], 0.0)
+        self.assertEqual(accel_payload["accel_z"], 1.0)
+        self.assertEqual(inputs["accel_input"]["producer"]["producer_id"], "builtin::raw_tilt")
+
+    def test_magnetometer_calibration_can_use_accelerometer_method_output(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app._mag_sources = app._default_magnetometer_sources()
+        app._mag_selected_source_id = "raw_magnetometer"
+        app._mag_dataset = Dataset(
+            "session.csv",
+            records=[
+                SampleRecord("raw_magnetometer", "raw", "Raw Magnetometer", "builtin", 100, 110, 108, 5.0, 2.0, 1.0, 68.0, "")
+            ],
+        )
+        app._mag_datasets = [app._mag_dataset]
+        app._acc_dataset = AccelerometerDataset(
+            "session.csv",
+            records=[
+                AccelerometerSampleRecord(
+                    "raw_accelerometer",
+                    "raw",
+                    "Raw Accelerometer",
+                    "builtin",
+                    100,
+                    110,
+                    108,
+                    0.0,
+                    0.0,
+                    1.0,
+                    None,
+                    None,
+                    "",
+                )
+            ],
+        )
+        app._acc_datasets = [app._acc_dataset]
+        app._gyro_dataset = None
+        app._gyro_datasets = []
+        app._imu_dataset = None
+        app._imu_datasets = []
+        app._calibration_stream_snapshots = {}
+        app._mag_methods = {}
+        app._acc_methods = {}
+
+        acc_plugin = LoadedMethodPlugin(
+            method_id="acc_method",
+            name="Calibrated Acc",
+            version="1.0.0",
+            file_path="/tmp/calibrated_acc.py",
+            info={
+                "name": "Calibrated Acc",
+                "version": "1.0.0",
+                "type": "method",
+                "supports_calibrate": True,
+                "supports_load_params": True,
+                "supports_save_params": True,
+                "supports_process": True,
+                "input_schema": {"acc_x": "float", "acc_y": "float", "acc_z": "float"},
+                "output_schema": {
+                    "acc_x": "float",
+                    "acc_y": "float",
+                    "acc_z": "float",
+                    "roll_deg": "float|None",
+                    "pitch_deg": "float|None",
+                },
+            },
+            module=types.SimpleNamespace(
+                process=lambda sample, params: {
+                    "timestamp_mcu": sample["timestamp_mcu"],
+                    "timestamp_pc_rx": sample["timestamp_pc_rx"],
+                    "timestamp_pc_est": sample.get("timestamp_pc_est"),
+                    "acc_x": float(sample["acc_x"]),
+                    "acc_y": float(sample["acc_y"]),
+                    "acc_z": float(sample["acc_z"]),
+                    "roll_deg": 0.0,
+                    "pitch_deg": 0.0,
+                    "flags": "calibrated_acc",
+                }
+            ),
+            status="ready",
+        )
+        acc_plugin.stream_requirements = infer_stream_requirements(acc_plugin.info)
+        acc_plugin.calibration_params = {
+            "algorithm_name": "Calibrated Acc",
+            "algorithm_version": "1.0.0",
+            "schema_version": "1",
+            "created_at": "2026-04-12T12:00:00Z",
+            "params": {},
+        }
+        acc_plugin.derived_stream_id = "derived_acc_method"
+        app._acc_methods = {acc_plugin.method_id: acc_plugin}
+
+        mag_plugin = LoadedMethodPlugin(
+            method_id="method_hill",
+            name="Heading Hill",
+            version="1.0.0",
+            file_path="/tmp/heading_hill.py",
+            info={
+                "name": "Heading Hill",
+                "version": "1.0.0",
+                "type": "method",
+                "supports_calibrate": True,
+                "supports_load_params": True,
+                "supports_save_params": True,
+                "supports_process": True,
+                "input_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "output_schema": {"mag_x": "float", "mag_y": "float", "mag_z": "float"},
+                "stream_requirements": {
+                    "calibrate": [
+                        {"slot": "mag_input", "kind": "imu.magnetometer_vector", "required": True},
+                        {"slot": "accel_input", "kind": "imu.accel_vector", "required": True},
+                    ]
+                },
+            },
+            module=types.SimpleNamespace(),
+            status="ready",
+        )
+        mag_plugin.stream_requirements = infer_stream_requirements(mag_plugin.info)
+        mag_plugin.stream_bindings[SCOPE_CALIBRATE] = {
+            "accel_input": make_method_producer_id(acc_plugin.file_path, "imu.accel_vector")
+        }
+        app._mag_methods = {mag_plugin.method_id: mag_plugin}
+
+        resolver = VirtualControllerApp._build_magnetometer_calibration_resolver(app, mag_plugin, app._mag_dataset)
+        inputs = resolver.export_inputs(mag_plugin.stream_requirements[SCOPE_CALIBRATE])
+
+        self.assertEqual(inputs["accel_input"]["producer"]["producer_id"], make_method_producer_id(acc_plugin.file_path, "imu.accel_vector"))
+        self.assertEqual(len(inputs["accel_input"]["records"]), 1)
+        self.assertEqual(inputs["accel_input"]["records"][0]["stream_id"], "derived_acc_method")
+        self.assertEqual(inputs["accel_input"]["records"][0]["flags"], "calibrated_acc")
 
     def test_apply_magnetometer_calibration_error_marks_method_red(self) -> None:
         app = object.__new__(VirtualControllerApp)
