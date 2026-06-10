@@ -127,7 +127,8 @@
         "show": true,
         "record": false,
         "realtime_enabled": false,
-        "params_profile_path": "",
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/simple_hard_iron.json",
+        "user_config": {},
         "bindings": {
           "calibrate": {},
           "process": {}
@@ -138,7 +139,8 @@
         "show": true,
         "record": false,
         "realtime_enabled": false,
-        "params_profile_path": "",
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/analitic_goemetry.json",
+        "user_config": {},
         "bindings": {
           "calibrate": {},
           "process": {}
@@ -149,7 +151,8 @@
         "show": true,
         "record": false,
         "realtime_enabled": false,
-        "params_profile_path": "",
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/Improved_affine.json",
+        "user_config": {},
         "bindings": {
           "calibrate": {},
           "process": {}
@@ -160,7 +163,8 @@
         "show": true,
         "record": false,
         "realtime_enabled": false,
-        "params_profile_path": "",
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/ETS_2D.json",
+        "user_config": {},
         "bindings": {
           "calibrate": {},
           "process": {}
@@ -171,7 +175,8 @@
         "show": true,
         "record": false,
         "realtime_enabled": false,
-        "params_profile_path": "",
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/ETS_sphere.json",
+        "user_config": {},
         "bindings": {
           "calibrate": {},
           "process": {}
@@ -182,14 +187,60 @@
         "show": true,
         "record": false,
         "realtime_enabled": false,
-        "params_profile_path": "",
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/Hill_calib.json",
+        "user_config": {
+          "vertical_horizontal_ratio": 2.87,
+          "flat_pitch_deg": 3.0,
+          "hill_pitch_min_deg": 2.0,
+          "max_sync_delta_ms": 250.0,
+          "pitch_sign": 1.0,
+          "robust": "irls",
+          "max_iter": 4,
+          "heading_iterations": 2,
+          "heading_offset_deg": 0.0
+        },
+        "bindings": {
+          "calibrate": {},
+          "process": {}
+        }
+      },
+      {
+        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/papafotisMagicalMethod.py",
+        "show": true,
+        "record": false,
+        "realtime_enabled": false,
+        "params_profile_path": "/home/necrosii/Programming/Python/Telega_controller/magical_opt.json",
+        "user_config": {
+          "window_s": 5.0,
+          "step_s": 0.2,
+          "min_segment_s": 1.0,
+          "merge_gap_s": 0.5,
+          "trim_edge_s": 0.2,
+          "min_samples_per_segment": 8,
+          "min_static_segments": 12,
+          "mag_norm_std_threshold": 50.0,
+          "mag_axis_std_threshold": 55.0,
+          "acc_norm_std_threshold": 0.01,
+          "acc_axis_std_threshold": 0.01,
+          "gyro_rms_threshold": 1.0,
+          "max_sync_delta_ms": null,
+          "trim_ratio": 0.1,
+          "duplicate_angle_deg": 5.0,
+          "max_points": 25,
+          "field_radius": null,
+          "init": "ellipsoid",
+          "max_iter": 100,
+          "tol_norm": 1e-05,
+          "tol_improvement": 1e-07,
+          "fallback_to_raw_samples": false
+        },
         "bindings": {
           "calibrate": {},
           "process": {}
         }
       }
     ],
-    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/headingHillMethod.py",
+    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/magnetometer/papafotisMagicalMethod.py",
     "primary_heading": {
       "kind": "raw"
     },
@@ -201,7 +252,7 @@
         "show corrected points": true,
         "show current point": true,
         "show raw heading": true,
-        "show GNSS heading": false,
+        "show GNSS heading": true,
         "show derived headings": true,
         "show trails": false,
         "auto fit on load": true
@@ -216,6 +267,7 @@
   },
   "accelerometer": {
     "datasets": [
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_hill_forward_and_backward.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill2.csv",
@@ -223,12 +275,14 @@
       "/home/necrosii/Programming/Python/Mag_data_generator/output/rotation.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_imu2.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/straight_line_with_hills.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/stright_line_forward.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib_2.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/calib_sphera_all_dimensions.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_heading_hill_ring_forward_backward_marked.csv"
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_heading_hill_ring_forward_backward_marked.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/horovod.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/twelwe_points.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/sqare.csv"
     ],
     "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
     "sources": {
@@ -242,20 +296,8 @@
       }
     },
     "selected_source_id": "raw_accelerometer",
-    "methods": [
-      {
-        "file_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/accelerometer/procedure3QuasiStaticMethod.py",
-        "show": false,
-        "record": false,
-        "realtime_enabled": false,
-        "params_profile_path": "",
-        "bindings": {
-          "calibrate": {},
-          "process": {}
-        }
-      }
-    ],
-    "selected_method_path": "/home/necrosii/Programming/Python/Telega_controller/externModules/accelerometer/procedure3QuasiStaticMethod.py",
+    "methods": [],
+    "selected_method_path": "",
     "primary_output": {
       "kind": "raw"
     },
@@ -281,6 +323,7 @@
   },
   "gyroscope": {
     "datasets": [
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_hill_forward_and_backward.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill2.csv",
@@ -288,12 +331,14 @@
       "/home/necrosii/Programming/Python/Mag_data_generator/output/rotation.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_imu2.csv",
       "/home/necrosii/Programming/Python/Mag_data_generator/output/generated_hill.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/straight_line_with_hills.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/stright_line_forward.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/circle_calib_2.csv",
       "/home/necrosii/Programming/Python/Telega_controller/datasets/calib_sphera_all_dimensions.csv",
-      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_heading_hill_ring_forward_backward_marked.csv"
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/calibrate_heading_hill_ring_forward_backward_marked.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/horovod.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/twelwe_points.csv",
+      "/home/necrosii/Programming/Python/Telega_controller/datasets/sqare.csv"
     ],
     "active_dataset_path": "/home/necrosii/Programming/Python/Telega_controller/datasets/infinity.csv",
     "sources": {
@@ -310,6 +355,7 @@
         "record": false,
         "realtime_enabled": false,
         "params_profile_path": "",
+        "user_config": {},
         "bindings": {
           "calibrate": {},
           "process": {}

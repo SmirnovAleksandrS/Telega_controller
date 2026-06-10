@@ -7,6 +7,7 @@ import struct
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 from app.accelerometer_dataset import AccelerometerDataset, AccelerometerSampleRecord
 from app.calibration_streams import SCOPE_CALIBRATE, infer_stream_requirements, make_method_producer_id
@@ -149,9 +150,11 @@ class _DummyMagnetometerTab:
         can_clear_params: bool,
         can_enable_realtime: bool,
         can_disable_realtime: bool,
+        can_configure: bool = False,
     ) -> None:
         self.selected_method_actions = {
             "can_calibrate": can_calibrate,
+            "can_configure": can_configure,
             "can_load_params": can_load_params,
             "can_save_params": can_save_params,
             "can_clear_params": can_clear_params,
@@ -715,6 +718,7 @@ class GuiControlRoutingTests(unittest.TestCase):
                             "created_at": "2026-04-08T10:00:00",
                             "params": {"offset_x": 1.0, "offset_y": 2.0, "offset_z": 3.0},
                         },
+                        "user_config": {},
                     },
                 ],
             )
@@ -989,12 +993,45 @@ class GuiControlRoutingTests(unittest.TestCase):
         })
         self.assertEqual(app.magnetometer_tab.selected_method_actions, {
             "can_calibrate": True,
+            "can_configure": True,
             "can_load_params": True,
             "can_save_params": False,
             "can_clear_params": False,
             "can_enable_realtime": False,
             "can_disable_realtime": False,
         })
+
+    def test_method_config_base_exposes_user_config_to_calibration(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        plugin = LoadedMethodPlugin(
+            method_id="method_1",
+            name="Configurable Method",
+            version="1.0.0",
+            file_path="/tmp/configurable.py",
+            info={
+                "name": "Configurable Method",
+                "version": "1.0.0",
+                "type": "method",
+                "supports_calibrate": True,
+                "supports_load_params": True,
+                "supports_save_params": True,
+                "supports_process": True,
+                "input_schema": {},
+                "output_schema": {},
+            },
+            module=types.SimpleNamespace(),
+            status="ready",
+            default_config={"max_iter": 4, "robust": "irls"},
+            user_config={"max_iter": 7, "field_radius": 42.0},
+        )
+
+        config = VirtualControllerApp._method_config_base(app, plugin)
+
+        self.assertEqual(config["max_iter"], 7)
+        self.assertEqual(config["robust"], "irls")
+        self.assertEqual(config["field_radius"], 42.0)
+        self.assertEqual(config["params"], {"max_iter": 7, "robust": "irls", "field_radius": 42.0})
+        self.assertEqual(config["method_config"], config["params"])
 
     def test_enable_magnetometer_method_realtime_defaults_record_on(self) -> None:
         app = object.__new__(VirtualControllerApp)
@@ -2105,6 +2142,58 @@ class GuiControlRoutingTests(unittest.TestCase):
         self.assertTrue(app.magnetometer_tab.metrics_report["can_export"])
         self.assertEqual(len(app.magnetometer_tab.metrics_report["rows"]), 6)
         self.assertIn("Metrics for metrics_case / Identity", app.magnetometer_tab.metrics_report["summary_text"])
+
+    def test_magnetometer_analysis_snapshot_handles_missing_dataset(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app._mag_methods = {}
+        app._mag_selected_method_id = None
+        app._mag_datasets = []
+        app._mag_dataset = None
+        app._mag_offline_method_clouds = {}
+        app._calibration_stream_snapshots = {}
+        app._magnetometer_paired_accelerometer_dataset = lambda _dataset=None: None
+
+        snapshot = VirtualControllerApp._build_magnetometer_analysis_snapshot(app)
+
+        self.assertIsNone(snapshot.active_dataset)
+        self.assertFalse(snapshot.availability.has_active_dataset)
+        self.assertEqual(snapshot.methods, ())
+
+    def test_open_magnetometer_analysis_passes_load_save_callbacks(self) -> None:
+        app = object.__new__(VirtualControllerApp)
+        app.root = object()
+        app._mag_methods = {}
+        app._mag_selected_method_id = None
+        app._mag_datasets = []
+        app._mag_dataset = None
+        app._mag_offline_method_clouds = {}
+        app._calibration_stream_snapshots = {}
+        app._mag_extended_analysis_window = None
+        app._magnetometer_paired_accelerometer_dataset = lambda _dataset=None: None
+        app._refresh_all_magnetometer_method_dataset_clouds = lambda: None
+        calls: list[tuple[str, str]] = []
+        app._on_load_magnetometer_method_params = lambda method_id: calls.append(("load", method_id))
+        app._on_save_magnetometer_method_params = lambda method_id: calls.append(("save", method_id))
+        created: list[object] = []
+
+        class _FakeAnalysisWindow:
+            def __init__(self, _master: object, **kwargs: object) -> None:
+                self.snapshot_provider = kwargs["snapshot_provider"]
+                self.on_load_params = kwargs["on_load_params"]
+                self.on_save_params = kwargs["on_save_params"]
+                self.snapshot = self.snapshot_provider()
+                created.append(self)
+
+        with mock.patch("app.gui_app.MagnetometerExtendedAnalysisWindow", _FakeAnalysisWindow):
+            VirtualControllerApp._on_open_magnetometer_extended_analysis(app)
+
+        self.assertEqual(len(created), 1)
+        window = created[0]
+        self.assertFalse(window.snapshot.availability.has_active_dataset)
+        window.on_load_params("method_1")
+        window.on_save_params("method_1")
+        self.assertEqual(calls, [("load", "method_1"), ("save", "method_1")])
+        self.assertFalse(hasattr(window, "on_calibrate"))
 
     def test_realtime_process_error_disables_method_and_opens_diagnostics(self) -> None:
         app = object.__new__(VirtualControllerApp)

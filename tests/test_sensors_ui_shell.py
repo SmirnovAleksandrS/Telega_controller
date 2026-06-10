@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import tkinter as tk
 from tkinter import ttk
 import unittest
@@ -17,6 +18,7 @@ from app.magnetometer_tab import (
     project_rotated_magnetometer_point,
     rotate_magnetometer_point,
 )
+from app.magnetometer_analysis_window import MagnetometerExtendedAnalysisWindow
 from app.method_card import MethodCard
 from app.source_card import SourceCard, resolve_source_card_status
 from app.sensors_tab import SensorsTab
@@ -46,6 +48,19 @@ class SensorsUiShellImportTests(unittest.TestCase):
         self.assertTrue(issubclass(MagnetometerTab, tk.Widget))
         self.assertTrue(issubclass(AccelerometerTab, tk.Widget))
         self.assertTrue(issubclass(GyroscopeTab, tk.Widget))
+
+    def test_extended_analysis_window_is_toplevel(self) -> None:
+        self.assertTrue(issubclass(MagnetometerExtendedAnalysisWindow, tk.Toplevel))
+
+    def test_magnetometer_tab_accepts_extended_analysis_callback(self) -> None:
+        params = inspect.signature(MagnetometerTab.__init__).parameters
+        self.assertIn("on_open_extended_analysis", params)
+
+    def test_sensors_tab_forwards_extended_analysis_callback(self) -> None:
+        params = inspect.signature(SensorsTab.__init__).parameters
+        self.assertIn("on_open_extended_analysis", params)
+        source = inspect.getsource(SensorsTab.__init__)
+        self.assertIn("on_open_extended_analysis=on_open_extended_analysis", source)
 
     def test_raw_heading_uses_north_zero_east_ninety(self) -> None:
         self.assertAlmostEqual(compute_raw_heading_deg(0.0, 1.0), 0.0)

@@ -1,0 +1,50 @@
+{
+  "time_col": "timestamp_mcu",
+  "time_unit_multiplier_to_seconds": 0.001,
+  "target_stream": "gnss_heading",
+  "target_fs_hz": 10.0,
+  "grid_mode": "uniform",
+  "median_window": 5,
+  "requested_mean_window": null,
+  "used_mean_windows": {
+    "raw_magnetometer": 4,
+    "raw_accelerometer": 4,
+    "raw_gyroscope": 4,
+    "gnss_heading": 1
+  },
+  "streams": [
+    {
+      "stream_id": "raw_magnetometer",
+      "n_samples": 11234,
+      "n_unique_timestamps": 11234,
+      "median_dt_raw": 25.0,
+      "median_dt_s": 0.025,
+      "fs_hz": 40.0
+    },
+    {
+      "stream_id": "raw_accelerometer",
+      "n_samples": 11234,
+      "n_unique_timestamps": 11234,
+      "median_dt_raw": 25.0,
+      "median_dt_s": 0.025,
+      "fs_hz": 40.0
+    },
+    {
+      "stream_id": "raw_gyroscope",
+      "n_samples": 11234,
+      "n_unique_timestamps": 11234,
+      "median_dt_raw": 25.0,
+      "median_dt_s": 0.025,
+      "fs_hz": 40.0
+    },
+    {
+      "stream_id": "gnss_heading",
+      "n_samples": 1922,
+      "n_unique_timestamps": 1922,
+      "median_dt_raw": 152.0,
+      "median_dt_s": 0.152,
+      "fs_hz": 6.578947368421053
+    }
+  ],
+  "n_output_rows": 3868
+}

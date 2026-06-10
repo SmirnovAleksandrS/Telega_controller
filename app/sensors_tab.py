@@ -32,6 +32,7 @@ class SensorsTab(ttk.Frame):
         on_select_method: Callable[[str], None] | None = None,
         on_open_method_info: Callable[[str], None] | None = None,
         on_calibrate_method: Callable[[str], None] | None = None,
+        on_configure_method: Callable[[str], None] | None = None,
         on_load_method_params: Callable[[str], None] | None = None,
         on_save_method_params: Callable[[str], None] | None = None,
         on_clear_method_params: Callable[[str], None] | None = None,
@@ -42,6 +43,7 @@ class SensorsTab(ttk.Frame):
         on_method_record_change: Callable[[str, bool], None] | None = None,
         on_select_primary_heading: Callable[[str], None] | None = None,
         on_export_metrics: Callable[[], None] | None = None,
+        on_open_extended_analysis: Callable[[], None] | None = None,
         accelerometer_callbacks: dict[str, Callable] | None = None,
         gyroscope_callbacks: dict[str, Callable] | None = None,
     ) -> None:
@@ -73,6 +75,7 @@ class SensorsTab(ttk.Frame):
             on_select_method=on_select_method,
             on_open_method_info=on_open_method_info,
             on_calibrate_method=on_calibrate_method,
+            on_configure_method=on_configure_method,
             on_load_method_params=on_load_method_params,
             on_save_method_params=on_save_method_params,
             on_clear_method_params=on_clear_method_params,
@@ -83,6 +86,7 @@ class SensorsTab(ttk.Frame):
             on_method_record_change=on_method_record_change,
             on_select_primary_heading=on_select_primary_heading,
             on_export_metrics=on_export_metrics,
+            on_open_extended_analysis=on_open_extended_analysis,
         )
         self.nb.add(self.magnetometer_tab, text="Magnetometer")
 
@@ -107,6 +111,7 @@ class SensorsTab(ttk.Frame):
             on_select_method=accelerometer_callbacks.get("on_select_method"),
             on_open_method_info=accelerometer_callbacks.get("on_open_method_info"),
             on_calibrate_method=accelerometer_callbacks.get("on_calibrate_method"),
+            on_configure_method=accelerometer_callbacks.get("on_configure_method"),
             on_load_method_params=accelerometer_callbacks.get("on_load_method_params"),
             on_save_method_params=accelerometer_callbacks.get("on_save_method_params"),
             on_clear_method_params=accelerometer_callbacks.get("on_clear_method_params"),
@@ -140,6 +145,7 @@ class SensorsTab(ttk.Frame):
             on_select_method=gyroscope_callbacks.get("on_select_method"),
             on_open_method_info=gyroscope_callbacks.get("on_open_method_info"),
             on_calibrate_method=gyroscope_callbacks.get("on_calibrate_method"),
+            on_configure_method=gyroscope_callbacks.get("on_configure_method"),
             on_load_method_params=gyroscope_callbacks.get("on_load_method_params"),
             on_save_method_params=gyroscope_callbacks.get("on_save_method_params"),
             on_clear_method_params=gyroscope_callbacks.get("on_clear_method_params"),

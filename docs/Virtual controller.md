@@ -792,7 +792,53 @@ May export:
 
 def validate_dataset(dataset): ...  
 def get_default_config(): ...  
+def get_config_schema(): ...  
 def get_last_report() -> str: ...
+
+`get_default_config()` returns a JSON-compatible `dict` with method options used as defaults for GUI editing and for
+`calibrate(dataset, config=...)`.
+
+`config_schema` may also be declared directly in `get_info()` or returned from `get_config_schema()`. It is optional and
+is only used by GUI to render typed fields. If it is missing, GUI still allows editing the method config as raw JSON.
+Both forms are accepted:
+
+```python
+"config_schema": [
+    {"key": "max_iter", "type": "int", "label": "Max iterations"},
+    {"key": "robust", "type": "choice", "choices": ["irls", "none"]},
+    {"key": "refine", "type": "bool"},
+]
+```
+
+or:
+
+```python
+"config_schema": {
+    "max_iter": {"type": "int", "label": "Max iterations"},
+    "robust": {"type": "choice", "choices": ["irls", "none"]},
+    "refine": {"type": "bool"},
+}
+```
+
+Supported GUI field types:
+
+- `float`
+- `int`
+- `bool`
+- `str`
+- `choice`
+- `json`
+
+During calibration GUI passes the effective method config on the top level of `config`, and also duplicates it into
+`config["params"]` and `config["method_config"]`. Existing stream routing fields are still present:
+
+- `stream_bindings`
+- `stream_requirements`
+- `stream_inputs`
+- `routing_validation`
+
+Reserved stream/routing fields are controlled by GUI and override user config keys with the same names. Plugins that do
+not define `get_default_config()` or `config_schema` continue to work unchanged.
 
 ## 6.5 Plugin loader rules
 

@@ -102,9 +102,11 @@ class _DummySensorTab:
         can_clear_params: bool,
         can_enable_realtime: bool,
         can_disable_realtime: bool,
+        can_configure: bool = False,
     ) -> None:
         self.selected_method_actions = {
             "can_calibrate": can_calibrate,
+            "can_configure": can_configure,
             "can_load_params": can_load_params,
             "can_save_params": can_save_params,
             "can_clear_params": can_clear_params,

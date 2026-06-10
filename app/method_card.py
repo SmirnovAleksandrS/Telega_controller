@@ -28,6 +28,7 @@ class MethodCard(tk.Frame):
         on_select: Callable[[str], None] | None = None,
         on_info: Callable[[str], None] | None = None,
         on_calibrate: Callable[[str], None] | None = None,
+        on_configure: Callable[[str], None] | None = None,
         on_load_params: Callable[[str], None] | None = None,
         on_save_params: Callable[[str], None] | None = None,
         on_show_change: Callable[[str, bool], None] | None = None,
@@ -50,6 +51,7 @@ class MethodCard(tk.Frame):
         self._on_select = on_select
         self._on_info = on_info
         self._on_calibrate = on_calibrate
+        self._on_configure = on_configure
         self._on_load_params = on_load_params
         self._on_save_params = on_save_params
         self._on_show_change = on_show_change
@@ -98,6 +100,8 @@ class MethodCard(tk.Frame):
         self.load_params_btn.pack(side="left")
         self.save_params_btn = ttk.Button(row2, text="Save params", command=self._handle_save_params, state="disabled")
         self.save_params_btn.pack(side="left", padx=(8, 0))
+        self.config_btn = ttk.Button(row2, text="Config", command=self._handle_configure, state="disabled")
+        self.config_btn.pack(side="left", padx=(8, 0))
         self.realtime_btn = ttk.Button(row2, text="Enable realtime", command=self._handle_toggle_realtime, state="disabled")
         self.realtime_btn.pack(side="right")
 
@@ -153,6 +157,9 @@ class MethodCard(tk.Frame):
     def set_save_params_enabled(self, enabled: bool) -> None:
         self.save_params_btn.configure(state="normal" if enabled else "disabled")
 
+    def set_config_enabled(self, enabled: bool) -> None:
+        self.config_btn.configure(state="normal" if enabled else "disabled")
+
     def set_realtime_state(self, *, enabled: bool, can_enable: bool, can_disable: bool) -> None:
         self.realtime_btn.configure(text="Disable realtime" if enabled else "Enable realtime")
         button_enabled = can_disable if enabled else can_enable
@@ -186,6 +193,10 @@ class MethodCard(tk.Frame):
     def _handle_save_params(self) -> None:
         if self._on_save_params is not None:
             self._on_save_params(self.method_id)
+
+    def _handle_configure(self) -> None:
+        if self._on_configure is not None:
+            self._on_configure(self.method_id)
 
     def _handle_show_change(self) -> None:
         if self._on_show_change is not None:

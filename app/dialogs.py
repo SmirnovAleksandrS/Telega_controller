@@ -398,6 +398,242 @@ class AddPluginDialog(tk.Toplevel):
         self.destroy()
 
 
+def _json_copy_dict(value: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    try:
+        copied = json.loads(json.dumps(value, ensure_ascii=False))
+    except Exception:
+        return dict(value)
+    return copied if isinstance(copied, dict) else {}
+
+
+def _format_config_value(value: Any) -> str:
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, ensure_ascii=False)
+    if value is None:
+        return ""
+    return str(value)
+
+
+class MethodConfigDialog(tk.Toplevel):
+    def __init__(
+        self,
+        master: tk.Widget,
+        *,
+        method_name: str,
+        current_config: dict[str, Any] | None = None,
+        default_config: dict[str, Any] | None = None,
+        config_schema: list[dict[str, Any]] | None = None,
+    ) -> None:
+        super().__init__(master)
+        self.title(f"Method Config - {method_name}")
+        self.geometry("760x640")
+        self.minsize(620, 460)
+        self.result: dict[str, Any] | None = None
+        self._default_config = _json_copy_dict(default_config)
+        self._current_config = _json_copy_dict(current_config)
+        self._schema = [dict(entry) for entry in (config_schema or []) if isinstance(entry, dict)]
+        self._field_vars: dict[str, tk.Variable] = {}
+        self._field_types: dict[str, str] = {}
+        self._schema_keys = {str(entry.get("key", "")).strip() for entry in self._schema if str(entry.get("key", "")).strip()}
+
+        root = ttk.Frame(self, padding=10)
+        root.pack(fill="both", expand=True)
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(1, weight=1)
+
+        ttk.Label(
+            root,
+            text="These values are passed to calibrate(dataset, config=...) together with stream bindings.",
+            foreground="#444444",
+            wraplength=700,
+            justify="left",
+        ).grid(row=0, column=0, sticky="ew")
+
+        if self._schema:
+            self._build_schema_editor(root)
+        else:
+            self._build_json_editor(root, self._current_config or self._default_config)
+
+        btns = ttk.Frame(root)
+        btns.grid(row=2, column=0, sticky="e", pady=(10, 0))
+        ttk.Button(btns, text="Reset to defaults", command=self._reset_defaults).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="Cancel", command=self._cancel).grid(row=0, column=1, padx=(0, 8))
+        ttk.Button(btns, text="OK", command=self._ok).grid(row=0, column=2)
+
+        prepare_toplevel(self, master)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+    def _value_for_key(self, entry: dict[str, Any]) -> Any:
+        key = str(entry.get("key", "")).strip()
+        if key in self._current_config:
+            return self._current_config[key]
+        if "default" in entry:
+            return entry.get("default")
+        return self._default_config.get(key)
+
+    def _build_schema_editor(self, root: ttk.Frame) -> None:
+        host = ttk.Frame(root)
+        host.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        host.columnconfigure(0, weight=1)
+        host.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(host, highlightthickness=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(canvas, target=canvas)
+        yscroll = ttk.Scrollbar(host, orient="vertical", command=canvas.yview)
+        yscroll.grid(row=0, column=1, sticky="ns")
+        canvas.configure(yscrollcommand=yscroll.set)
+
+        frame = ttk.Frame(canvas, padding=(0, 0, 8, 0))
+        window_id = canvas.create_window((0, 0), window=frame, anchor="nw")
+        frame.columnconfigure(1, weight=1)
+
+        def on_frame_configure(_event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def on_canvas_configure(event: tk.Event) -> None:
+            canvas.itemconfigure(window_id, width=event.width)
+
+        frame.bind("<Configure>", on_frame_configure)
+        canvas.bind("<Configure>", on_canvas_configure)
+
+        for index, entry in enumerate(self._schema):
+            self._add_schema_row(frame, index * 2, entry)
+
+        extra = {
+            key: value
+            for key, value in self._current_config.items()
+            if key not in self._schema_keys
+        }
+        extra_row = len(self._schema) * 2
+        ttk.Label(frame, text="Extra JSON").grid(row=extra_row, column=0, sticky="nw", pady=(10, 2))
+        self.extra_text = tk.Text(frame, height=5, wrap="none")
+        self.extra_text.grid(row=extra_row, column=1, sticky="ew", padx=(8, 0), pady=(10, 2))
+        bind_vertical_mousewheel(self.extra_text)
+        self.extra_text.insert("1.0", json.dumps(extra, ensure_ascii=False, indent=2))
+
+    def _add_schema_row(self, frame: ttk.Frame, row: int, entry: dict[str, Any]) -> None:
+        key = str(entry.get("key", "")).strip()
+        label = str(entry.get("label") or key)
+        field_type = str(entry.get("type", "str")).strip().lower() or "str"
+        value = self._value_for_key(entry)
+        ttk.Label(frame, text=label).grid(row=row, column=0, sticky="nw", pady=4)
+
+        if field_type == "bool":
+            var = tk.BooleanVar(value=bool(value))
+            widget = ttk.Checkbutton(frame, variable=var)
+        elif field_type == "choice":
+            choices = entry.get("choices", [])
+            values = tuple(str(choice) for choice in choices) if isinstance(choices, (list, tuple)) else ()
+            var = tk.StringVar(value="" if value is None else str(value))
+            widget = ttk.Combobox(frame, textvariable=var, values=values, state="readonly" if values else "normal")
+        else:
+            var = tk.StringVar(value=_format_config_value(value))
+            widget = ttk.Entry(frame, textvariable=var)
+        widget.grid(row=row, column=1, sticky="ew", padx=(8, 0), pady=4)
+        self._field_vars[key] = var
+        self._field_types[key] = field_type
+
+        description = str(entry.get("description", "")).strip()
+        if description:
+            ttk.Label(frame, text=description, foreground="#555555", wraplength=460, justify="left").grid(
+                row=row + 1,
+                column=1,
+                sticky="ew",
+                padx=(8, 0),
+                pady=(0, 4),
+            )
+
+    def _build_json_editor(self, root: ttk.Frame, config: dict[str, Any]) -> None:
+        body = ttk.LabelFrame(root, text="JSON Config", padding=8)
+        body.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
+        self.json_text = tk.Text(body, wrap="none")
+        self.json_text.grid(row=0, column=0, sticky="nsew")
+        bind_vertical_mousewheel(self.json_text)
+        self.json_text.insert("1.0", json.dumps(config, ensure_ascii=False, indent=2))
+        yscroll = ttk.Scrollbar(body, orient="vertical", command=self.json_text.yview)
+        yscroll.grid(row=0, column=1, sticky="ns")
+        self.json_text.configure(yscrollcommand=yscroll.set)
+
+    def _parse_field_value(self, key: str, field_type: str, raw_value: Any) -> Any:
+        if field_type == "bool":
+            return bool(raw_value)
+        text = str(raw_value).strip()
+        if field_type in {"int", "float", "json"} and text == "":
+            return None
+        if field_type == "int":
+            return int(text)
+        if field_type == "float":
+            return float(text)
+        if field_type == "json":
+            return json.loads(text) if text else None
+        return text
+
+    def _parse_schema_config(self) -> dict[str, Any]:
+        config: dict[str, Any] = {}
+        for key, var in self._field_vars.items():
+            field_type = self._field_types.get(key, "str")
+            raw_value = var.get()
+            try:
+                config[key] = self._parse_field_value(key, field_type, raw_value)
+            except Exception as exc:
+                raise ValueError(f"{key}: invalid {field_type} value ({exc})") from exc
+        extra_text = self.extra_text.get("1.0", "end").strip()
+        if extra_text:
+            extra = json.loads(extra_text)
+            if not isinstance(extra, dict):
+                raise ValueError("Extra JSON must be an object")
+            config.update(extra)
+        return config
+
+    def _parse_json_config(self) -> dict[str, Any]:
+        payload = self.json_text.get("1.0", "end").strip()
+        if not payload:
+            return {}
+        config = json.loads(payload)
+        if not isinstance(config, dict):
+            raise ValueError("Config JSON must be an object")
+        return config
+
+    def _reset_defaults(self) -> None:
+        defaults = json.dumps(self._default_config, ensure_ascii=False, indent=2)
+        if self._schema:
+            for entry in self._schema:
+                key = str(entry.get("key", "")).strip()
+                if not key:
+                    continue
+                value = entry.get("default", self._default_config.get(key))
+                var = self._field_vars.get(key)
+                if var is None:
+                    continue
+                if isinstance(var, tk.BooleanVar):
+                    var.set(bool(value))
+                else:
+                    var.set(_format_config_value(value))
+            self.extra_text.delete("1.0", "end")
+            self.extra_text.insert("1.0", "{}")
+            return
+        self.json_text.delete("1.0", "end")
+        self.json_text.insert("1.0", defaults)
+
+    def _ok(self) -> None:
+        try:
+            self.result = self._parse_schema_config() if self._schema else self._parse_json_config()
+        except Exception as exc:
+            messagebox.showerror("Method Config", str(exc), parent=self)
+            return
+        self.destroy()
+
+    def _cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+
 class MethodInfoDialog(tk.Toplevel):
     def __init__(
         self,
@@ -654,6 +890,10 @@ def format_method_info_text(
     params_profile_path: str | None = None,
     calibration_params: object = None,
     calibration_report: str = "",
+    default_config: dict[str, Any] | None = None,
+    user_config: dict[str, Any] | None = None,
+    effective_config: dict[str, Any] | None = None,
+    config_schema: list[dict[str, Any]] | None = None,
     stream_requirements: dict[str, object] | None = None,
     stream_bindings: dict[str, object] | None = None,
     routing_validation: dict[str, object] | None = None,
@@ -687,7 +927,11 @@ def format_method_info_text(
             "has_calibration_params": calibration_params is not None,
             "calibration_params": calibration_params,
             "calibration_summary": calibration_summary,
+            "default_config": default_config or {},
+            "user_config": user_config or {},
+            "effective_config": effective_config or {},
         },
+        "config_schema": config_schema or [],
         "stream_requirements": stream_requirements or {},
         "stream_bindings": stream_bindings or {},
         "routing_validation": routing_validation or {},
@@ -710,6 +954,10 @@ def build_method_info_payload(
     params_profile_path: str | None = None,
     calibration_params: object = None,
     calibration_report: str = "",
+    default_config: dict[str, Any] | None = None,
+    user_config: dict[str, Any] | None = None,
+    effective_config: dict[str, Any] | None = None,
+    config_schema: list[dict[str, Any]] | None = None,
     stream_requirements: dict[str, object] | None = None,
     stream_bindings: dict[str, object] | None = None,
     routing_validation: dict[str, object] | None = None,
@@ -731,6 +979,10 @@ def build_method_info_payload(
         params_profile_path=params_profile_path,
         calibration_params=calibration_params,
         calibration_report=calibration_report,
+        default_config=default_config,
+        user_config=user_config,
+        effective_config=effective_config,
+        config_schema=config_schema,
         stream_requirements=stream_requirements,
         stream_bindings=stream_bindings,
         routing_validation=routing_validation,
@@ -758,15 +1010,21 @@ def build_method_info_payload(
         {
             "input_schema": info.get("input_schema"),
             "output_schema": info.get("output_schema"),
+            "config_schema": config_schema or [],
             "stream_requirements": stream_requirements or {},
         },
         ensure_ascii=False,
         indent=2,
     )
-    summary_text = (
-        json.dumps(calibration_summary, ensure_ascii=False, indent=2)
-        if calibration_summary
-        else "{}"
+    summary_text = json.dumps(
+        {
+            "calibration_summary": calibration_summary,
+            "default_config": default_config or {},
+            "user_config": user_config or {},
+            "effective_config": effective_config or {},
+        },
+        ensure_ascii=False,
+        indent=2,
     )
     return {
         "name": info.get("name", "-"),

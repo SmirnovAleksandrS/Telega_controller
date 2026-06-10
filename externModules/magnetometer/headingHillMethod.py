@@ -87,6 +87,17 @@ def get_info() -> dict:
                 },
             ],
         },
+        "config_schema": [
+            {"key": "vertical_horizontal_ratio", "type": "float", "label": "H_v / H_h", "description": "Vertical-to-horizontal magnetic field ratio for hill correction."},
+            {"key": "flat_pitch_deg", "type": "float", "label": "Flat pitch threshold deg"},
+            {"key": "hill_pitch_min_deg", "type": "float", "label": "Hill pitch minimum deg"},
+            {"key": "max_sync_delta_ms", "type": "float", "label": "Max accel sync delta ms"},
+            {"key": "pitch_sign", "type": "float", "label": "Pitch sign"},
+            {"key": "robust", "type": "choice", "label": "Robust fit", "choices": ["irls", "none"]},
+            {"key": "max_iter", "type": "int", "label": "Ellipse IRLS iterations"},
+            {"key": "heading_iterations", "type": "int", "label": "Heading correction iterations"},
+            {"key": "heading_offset_deg", "type": "float", "label": "Heading offset deg"},
+        ],
     }
 
 

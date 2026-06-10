@@ -42,6 +42,18 @@ from app.gyroscope_tab import compute_gyro_rate_magnitude
 from app.imu_dataset import ImuCsvStreamWriter, ImuDataset, ImuSampleRecord
 from app.manual_tab import ManualTab
 from app.magnetometer_dataset import Dataset, SampleRecord
+from app.magnetometer_analysis import (
+    AnalysisDatasetRecords,
+    AnalysisSnapshot,
+    build_data_availability,
+    build_method_state,
+    default_figure_slots,
+    raw_magnetometer_records,
+    reference_heading_records,
+    summarize_dataset,
+    tilt_records_from_dataset,
+)
+from app.magnetometer_analysis_window import MagnetometerExtendedAnalysisWindow
 from app.magnetometer_metrics import MetricsReport, compute_metrics_report
 from app.magnetometer_plugin_loader import (
     CalibrationRunResult,
@@ -67,6 +79,7 @@ from app.dialogs import (
     GeometrySettingsDialog,
     GeometryConfig,
     MethodDiagnosticsDialog,
+    MethodConfigDialog,
     MethodInfoDialog,
     SpeedMapDialog,
     SpeedMapConfig,
@@ -194,6 +207,7 @@ class VirtualControllerApp:
         self._mag_primary_heading_stream_id = "raw_heading"
         self._mag_last_live_snapshot: dict[str, Any] | None = None
         self._mag_metrics_report: MetricsReport | None = None
+        self._mag_extended_analysis_window: MagnetometerExtendedAnalysisWindow | None = None
         self._mag_last_dataset_ui_refresh_s = 0.0
         self._mag_dataset_ui_refresh_interval_s = DATASET_UI_REFRESH_INTERVAL_S
         self._mag_last_live_ui_update_s = 0.0
@@ -372,6 +386,7 @@ class VirtualControllerApp:
             on_select_method=self._on_select_magnetometer_method,
             on_open_method_info=self._on_open_magnetometer_method_info,
             on_calibrate_method=self._on_calibrate_magnetometer_method,
+            on_configure_method=self._on_configure_magnetometer_method,
             on_load_method_params=self._on_load_magnetometer_method_params,
             on_save_method_params=self._on_save_magnetometer_method_params,
             on_clear_method_params=self._on_clear_magnetometer_method_params,
@@ -382,6 +397,7 @@ class VirtualControllerApp:
             on_method_record_change=self._on_toggle_magnetometer_method_record,
             on_select_primary_heading=self._on_select_magnetometer_primary_heading,
             on_export_metrics=self._on_magnetometer_export_metrics_csv,
+            on_open_extended_analysis=self._on_open_magnetometer_extended_analysis,
             accelerometer_callbacks={
                 "on_start_record": self._on_accelerometer_start_record,
                 "on_stop_record": self._on_accelerometer_stop_record,
@@ -401,6 +417,7 @@ class VirtualControllerApp:
                 "on_select_method": self._on_select_accelerometer_method,
                 "on_open_method_info": self._on_open_accelerometer_method_info,
                 "on_calibrate_method": self._on_calibrate_accelerometer_method,
+                "on_configure_method": self._on_configure_accelerometer_method,
                 "on_load_method_params": self._on_load_accelerometer_method_params,
                 "on_save_method_params": self._on_save_accelerometer_method_params,
                 "on_clear_method_params": self._on_clear_accelerometer_method_params,
@@ -430,6 +447,7 @@ class VirtualControllerApp:
                 "on_select_method": self._on_select_gyroscope_method,
                 "on_open_method_info": self._on_open_gyroscope_method_info,
                 "on_calibrate_method": self._on_calibrate_gyroscope_method,
+                "on_configure_method": self._on_configure_gyroscope_method,
                 "on_load_method_params": self._on_load_gyroscope_method_params,
                 "on_save_method_params": self._on_save_gyroscope_method_params,
                 "on_clear_method_params": self._on_clear_gyroscope_method_params,
@@ -1661,6 +1679,7 @@ class VirtualControllerApp:
                     "record": bool(plugin.record_enabled),
                     "realtime_enabled": bool(plugin.realtime_enabled),
                     "params_profile_path": plugin.params_profile_path or "",
+                    "user_config": self._json_copy_dict(getattr(plugin, "user_config", {})),
                     "bindings": self._stream_bindings_payload(plugin),
                 }
             )
@@ -2470,6 +2489,14 @@ class VirtualControllerApp:
                     plugin.stream_requirements = infer_stream_requirements(plugin.info)
                 except Exception:
                     plugin.stream_requirements = {}
+            if not isinstance(getattr(plugin, "default_config", None), dict):
+                plugin.default_config = {}
+            if not isinstance(getattr(plugin, "user_config", None), dict):
+                plugin.user_config = {}
+            if not isinstance(getattr(plugin, "config_schema", None), list):
+                plugin.config_schema = []
+            if not isinstance(getattr(plugin, "config_warnings", None), list):
+                plugin.config_warnings = []
 
     def _publish_calibration_stream_snapshot(
         self,
@@ -2811,6 +2838,28 @@ class VirtualControllerApp:
             if isinstance(bindings, dict)
         }
 
+    def _json_copy_dict(self, value: dict[str, Any] | None) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        try:
+            copied = json.loads(json.dumps(value, ensure_ascii=False))
+        except Exception:
+            return dict(value)
+        return copied if isinstance(copied, dict) else {}
+
+    def _method_effective_config(self, plugin: LoadedMethodPlugin) -> dict[str, Any]:
+        default_config = self._json_copy_dict(getattr(plugin, "default_config", {}))
+        user_config = self._json_copy_dict(getattr(plugin, "user_config", {}))
+        default_config.update(user_config)
+        return default_config
+
+    def _method_config_base(self, plugin: LoadedMethodPlugin) -> dict[str, Any]:
+        method_config = self._method_effective_config(plugin)
+        config = self._json_copy_dict(method_config)
+        config["params"] = self._json_copy_dict(method_config)
+        config["method_config"] = self._json_copy_dict(method_config)
+        return config
+
     def _build_magnetometer_method_info_payload(self, method_id: str) -> dict[str, Any]:
         self._ensure_magnetometer_method_state()
         plugin = self._mag_methods.get(method_id)
@@ -2828,6 +2877,10 @@ class VirtualControllerApp:
             params_profile_path=plugin.params_profile_path,
             calibration_params=plugin.calibration_params,
             calibration_report=plugin.calibration_report,
+            default_config=getattr(plugin, "default_config", {}),
+            user_config=getattr(plugin, "user_config", {}),
+            effective_config=self._method_effective_config(plugin),
+            config_schema=getattr(plugin, "config_schema", []),
             stream_requirements=self._stream_requirements_payload(plugin),
             stream_bindings=self._stream_bindings_payload(plugin),
             routing_validation=self._method_routing_validation_payload(plugin),
@@ -3107,13 +3160,15 @@ class VirtualControllerApp:
         self._update_magnetometer_method_routing_state()
         resolver = self._build_magnetometer_calibration_resolver(plugin, dataset)
         requirements = self._magnetometer_method_requirements(plugin, scope=SCOPE_CALIBRATE)
-        return {
+        config = self._method_config_base(plugin)
+        config.update({
             "stream_bindings": self._effective_magnetometer_stream_bindings(plugin, scope=SCOPE_CALIBRATE),
             "stream_requirements": [requirement.as_dict() for requirement in requirements],
             "stream_resolver": resolver,
             "stream_inputs": resolver.export_inputs(requirements),
             "routing_validation": self._method_routing_validation_payload(plugin),
-        }
+        })
+        return config
 
     def _raw_magnetometer_dataset_records(self, dataset: Dataset | None = None) -> list[SampleRecord]:
         active_dataset = getattr(self, "_mag_dataset", None) if dataset is None else dataset
@@ -3238,6 +3293,9 @@ class VirtualControllerApp:
             plugin = self._register_magnetometer_method(load_method_plugin(file_path))
             plugins_by_path[plugin.file_path] = plugin
             plugin.show_enabled = bool(entry.get("show", False))
+            user_config = entry.get("user_config", {})
+            if isinstance(user_config, dict):
+                plugin.user_config = self._json_copy_dict(user_config)
             saved_bindings = entry.get("bindings", {})
             if isinstance(saved_bindings, dict):
                 plugin.stream_bindings[SCOPE_CALIBRATE] = {
@@ -3320,6 +3378,7 @@ class VirtualControllerApp:
                 "show": plugin.show_enabled,
                 "show_enabled": plugin.can_toggle_show(),
                 "can_calibrate": self._can_start_magnetometer_calibration(plugin),
+                "can_configure": plugin.can_edit_config(),
                 "can_load_params": plugin.can_load_params(),
                 "can_save_params": plugin.can_save_params(),
                 "realtime_enabled": plugin.realtime_enabled,
@@ -3344,6 +3403,7 @@ class VirtualControllerApp:
             )
             magnetometer_tab.set_selected_method_actions(
                 can_calibrate=False,
+                can_configure=False,
                 can_load_params=False,
                 can_save_params=False,
                 can_clear_params=False,
@@ -3360,6 +3420,7 @@ class VirtualControllerApp:
         )
         magnetometer_tab.set_selected_method_actions(
             can_calibrate=self._can_start_magnetometer_calibration(selected),
+            can_configure=selected.can_edit_config(),
             can_load_params=selected.can_load_params(),
             can_save_params=selected.can_save_params(),
             can_clear_params=selected.can_clear_params(),
@@ -3775,6 +3836,7 @@ class VirtualControllerApp:
                 "record": bool(plugin.record_enabled),
                 "realtime_enabled": bool(plugin.realtime_enabled),
                 "params": plugin.calibration_params,
+                "user_config": self._json_copy_dict(getattr(plugin, "user_config", {})),
                 "stream_bindings": {
                     SCOPE_CALIBRATE: self._effective_magnetometer_stream_bindings(
                         plugin,
@@ -3811,6 +3873,7 @@ class VirtualControllerApp:
                 "file_path": plugin.file_path,
                 "realtime_enabled": bool(plugin.realtime_enabled),
                 "params": plugin.calibration_params,
+                "user_config": self._json_copy_dict(getattr(plugin, "user_config", {})),
             }
             for method_id, plugin in self._mag_methods.items()
             if bool(plugin.record_enabled)
@@ -4132,6 +4195,87 @@ class VirtualControllerApp:
             summary_text=report.summary_text,
             can_export=bool(report.rows),
         )
+
+    def _build_magnetometer_analysis_snapshot(self) -> AnalysisSnapshot:
+        self._ensure_magnetometer_method_state()
+        active_dataset = getattr(self, "_mag_dataset", None)
+        all_datasets = list(getattr(self, "_mag_datasets", []) or [])
+        if active_dataset is not None and all(dataset is not active_dataset for dataset in all_datasets):
+            all_datasets.append(active_dataset)
+        dataset_summaries = tuple(
+            summary
+            for summary in (
+                summarize_dataset(dataset, is_active=dataset is active_dataset)
+                for dataset in all_datasets
+            )
+            if summary is not None
+        )
+        active_summary = summarize_dataset(active_dataset, is_active=True)
+        paired_acc_dataset = self._magnetometer_paired_accelerometer_dataset(active_dataset)
+        active_raw_records = tuple(raw_magnetometer_records(active_dataset))
+        active_reference_records = tuple(reference_heading_records(active_dataset))
+        active_tilt_records = tuple(tilt_records_from_dataset(paired_acc_dataset))
+        dataset_records = tuple(
+            AnalysisDatasetRecords(
+                name=(summary.name if summary is not None else str(getattr(dataset, "name", "dataset"))),
+                source_path=str(getattr(dataset, "source_path", "") or ""),
+                is_active=dataset is active_dataset,
+                raw_records=tuple(raw_magnetometer_records(dataset)),
+                reference_records=tuple(reference_heading_records(dataset)),
+            )
+            for dataset, summary in (
+                (dataset, summarize_dataset(dataset, is_active=dataset is active_dataset))
+                for dataset in all_datasets
+            )
+        )
+        method_states = tuple(
+            build_method_state(
+                method_id,
+                plugin,
+                offline_record_count=len(getattr(self, "_mag_offline_method_clouds", {}).get(method_id, [])),
+            )
+            for method_id, plugin in getattr(self, "_mag_methods", {}).items()
+        )
+        availability = build_data_availability(active_dataset, paired_acc_dataset, method_states)
+        return AnalysisSnapshot(
+            active_dataset=active_summary,
+            datasets=dataset_summaries,
+            availability=availability,
+            methods=method_states,
+            figure_slots=default_figure_slots(),
+            selected_method_id=getattr(self, "_mag_selected_method_id", None),
+            raw_records=active_raw_records,
+            reference_records=active_reference_records,
+            tilt_records=active_tilt_records,
+            derived_records_by_method_id={
+                method_id: tuple(records)
+                for method_id, records in getattr(self, "_mag_offline_method_clouds", {}).items()
+            },
+            dataset_records=dataset_records,
+        )
+
+    def _on_open_magnetometer_extended_analysis(self) -> None:
+        self._ensure_magnetometer_method_state()
+        self._refresh_all_magnetometer_method_dataset_clouds()
+        window = getattr(self, "_mag_extended_analysis_window", None)
+        if window is not None:
+            try:
+                if bool(window.winfo_exists()):
+                    window.refresh()
+                    window.lift(self.root)
+                    window.focus_set()
+                    return
+            except Exception:
+                pass
+            self._mag_extended_analysis_window = None
+
+        window = MagnetometerExtendedAnalysisWindow(
+            self.root,
+            snapshot_provider=self._build_magnetometer_analysis_snapshot,
+            on_load_params=self._on_load_magnetometer_method_params,
+            on_save_params=self._on_save_magnetometer_method_params,
+        )
+        self._mag_extended_analysis_window = window
 
     def _on_magnetometer_export_metrics_csv(self) -> None:
         report = self._mag_metrics_report
@@ -4599,6 +4743,35 @@ class VirtualControllerApp:
         result = save_method_params(plugin, path, plugin.calibration_params)
         self._apply_magnetometer_param_io_result(method_id, result, action="save", path=path)
 
+    def _configure_method_plugin(self, plugin: LoadedMethodPlugin, *, title: str) -> bool:
+        if plugin is None or not plugin.can_edit_config():
+            return False
+        dlg = MethodConfigDialog(
+            self.root,
+            method_name=plugin.name,
+            current_config=self._method_effective_config(plugin),
+            default_config=getattr(plugin, "default_config", {}),
+            config_schema=getattr(plugin, "config_schema", []),
+        )
+        self.root.wait_window(dlg)
+        if dlg.result is None:
+            return False
+        plugin.user_config = self._json_copy_dict(dlg.result)
+        plugin.config_warnings = []
+        if plugin.calibration_params is not None:
+            plugin.params_warnings = ["method config changed after last calibration; recalibrate to apply it"]
+        self._show_info(title, f"Config updated for {plugin.name}.")
+        return True
+
+    def _on_configure_magnetometer_method(self, method_id: str) -> None:
+        self._ensure_magnetometer_method_state()
+        plugin = self._mag_methods.get(method_id)
+        if plugin is None:
+            return
+        if self._configure_method_plugin(plugin, title="Magnetometer Config"):
+            self._refresh_magnetometer_methods_ui()
+            self._save_settings()
+
     def _on_clear_magnetometer_method_params(self, method_id: str) -> None:
         self._ensure_magnetometer_method_state()
         plugin = self._mag_methods.get(method_id)
@@ -4969,6 +5142,14 @@ class VirtualControllerApp:
                     plugin.stream_requirements = infer_stream_requirements(plugin.info)
                 except Exception:
                     plugin.stream_requirements = {}
+            if not isinstance(getattr(plugin, "default_config", None), dict):
+                plugin.default_config = {}
+            if not isinstance(getattr(plugin, "user_config", None), dict):
+                plugin.user_config = {}
+            if not isinstance(getattr(plugin, "config_schema", None), list):
+                plugin.config_schema = []
+            if not isinstance(getattr(plugin, "config_warnings", None), list):
+                plugin.config_warnings = []
 
     def _ensure_sensor_calibration_state(self, sensor: str) -> None:
         prefix = "_acc" if sensor == "acc" else "_gyro"
@@ -4999,6 +5180,7 @@ class VirtualControllerApp:
                     "record": bool(plugin.record_enabled),
                     "realtime_enabled": bool(plugin.realtime_enabled),
                     "params_profile_path": plugin.params_profile_path or "",
+                    "user_config": self._json_copy_dict(getattr(plugin, "user_config", {})),
                     "bindings": self._stream_bindings_payload(plugin),
                 }
             )
@@ -5367,6 +5549,10 @@ class VirtualControllerApp:
             params_profile_path=plugin.params_profile_path,
             calibration_params=plugin.calibration_params,
             calibration_report=plugin.calibration_report,
+            default_config=getattr(plugin, "default_config", {}),
+            user_config=getattr(plugin, "user_config", {}),
+            effective_config=self._method_effective_config(plugin),
+            config_schema=getattr(plugin, "config_schema", []),
             stream_requirements=self._stream_requirements_payload(plugin),
             stream_bindings=self._stream_bindings_payload(plugin),
             routing_validation=self._method_routing_validation_payload(plugin),
@@ -5895,6 +6081,7 @@ class VirtualControllerApp:
                 "show": plugin.show_enabled,
                 "show_enabled": plugin.can_toggle_show(),
                 "can_calibrate": self._can_start_sensor_calibration(sensor, plugin),
+                "can_configure": plugin.can_edit_config(),
                 "can_load_params": plugin.can_load_params(),
                 "can_save_params": plugin.can_save_params(),
                 "realtime_enabled": plugin.realtime_enabled,
@@ -5913,6 +6100,7 @@ class VirtualControllerApp:
             tab.update_selected_method_details(name="-", version="-", path="-", status="-", capabilities="-")
             tab.set_selected_method_actions(
                 can_calibrate=False,
+                can_configure=False,
                 can_load_params=False,
                 can_save_params=False,
                 can_clear_params=False,
@@ -5930,6 +6118,7 @@ class VirtualControllerApp:
         )
         tab.set_selected_method_actions(
             can_calibrate=self._can_start_sensor_calibration(sensor, selected),
+            can_configure=selected.can_edit_config(),
             can_load_params=selected.can_load_params(),
             can_save_params=selected.can_save_params(),
             can_clear_params=selected.can_clear_params(),
@@ -6098,6 +6287,7 @@ class VirtualControllerApp:
                 "record": bool(plugin.record_enabled),
                 "realtime_enabled": bool(plugin.realtime_enabled),
                 "params": plugin.calibration_params,
+                "user_config": self._json_copy_dict(getattr(plugin, "user_config", {})),
                 "stream_bindings": {
                     SCOPE_CALIBRATE: self._effective_sensor_stream_bindings(sensor, plugin, scope=SCOPE_CALIBRATE, producers=producers),
                     SCOPE_PROCESS: self._effective_sensor_stream_bindings(sensor, plugin, scope=SCOPE_PROCESS, producers=producers),
@@ -6126,6 +6316,7 @@ class VirtualControllerApp:
                 "file_path": plugin.file_path,
                 "realtime_enabled": bool(plugin.realtime_enabled),
                 "params": plugin.calibration_params,
+                "user_config": self._json_copy_dict(getattr(plugin, "user_config", {})),
             }
             for method_id, plugin in methods.items()
             if bool(plugin.record_enabled)
@@ -6595,7 +6786,8 @@ class VirtualControllerApp:
         bindings = self._effective_sensor_stream_bindings(sensor, plugin, scope=SCOPE_CALIBRATE, producers=producer_map)
         resolver = self._build_sensor_calibration_resolver(sensor, plugin, dataset)
         requirements = self._sensor_method_requirements(sensor, plugin, scope=SCOPE_CALIBRATE)
-        return {
+        config = self._method_config_base(plugin)
+        config.update({
             "stream_bindings": bindings,
             "stream_requirements": [requirement.as_dict() for requirement in requirements],
             "stream_producers": {producer_id: descriptor.as_dict() for producer_id, descriptor in producer_map.items()},
@@ -6607,7 +6799,8 @@ class VirtualControllerApp:
             "stream_resolver": resolver,
             "stream_inputs": resolver.export_inputs(requirements),
             "routing_validation": self._method_routing_validation_payload(plugin),
-        }
+        })
+        return config
 
     def _refresh_sensor_method_clouds_ui(self, sensor: str) -> None:
         tab = self._sensor_tab(sensor)
@@ -6888,6 +7081,16 @@ class VirtualControllerApp:
             return
         result = save_method_params(plugin, path, plugin.calibration_params)
         self._apply_sensor_param_io_result(sensor, method_id, result, action="save", path=path)
+
+    def _on_configure_sensor_method(self, sensor: str, method_id: str) -> None:
+        self._ensure_sensor_method_state(sensor)
+        methods: dict[str, LoadedMethodPlugin] = getattr(self, "_acc_methods" if sensor == "acc" else "_gyro_methods")
+        plugin = methods.get(method_id)
+        if plugin is None:
+            return
+        if self._configure_method_plugin(plugin, title=f"{self._sensor_title(sensor)} Config"):
+            self._refresh_sensor_methods_ui(sensor)
+            self._save_settings()
 
     def _on_clear_sensor_method_params(self, sensor: str, method_id: str) -> None:
         self._ensure_sensor_method_state(sensor)
@@ -7177,6 +7380,9 @@ class VirtualControllerApp:
             plugin = self._register_sensor_method(sensor, load_method_plugin(file_path))
             plugins_by_path[plugin.file_path] = plugin
             plugin.show_enabled = bool(entry.get("show", False))
+            user_config = entry.get("user_config", {})
+            if isinstance(user_config, dict):
+                plugin.user_config = self._json_copy_dict(user_config)
             saved_bindings = entry.get("bindings", {})
             if isinstance(saved_bindings, dict):
                 plugin.stream_bindings[SCOPE_CALIBRATE] = {
@@ -7669,6 +7875,12 @@ class VirtualControllerApp:
 
     def _on_calibrate_gyroscope_method(self, method_id: str) -> None:
         self._on_calibrate_sensor_method("gyro", method_id)
+
+    def _on_configure_accelerometer_method(self, method_id: str) -> None:
+        self._on_configure_sensor_method("acc", method_id)
+
+    def _on_configure_gyroscope_method(self, method_id: str) -> None:
+        self._on_configure_sensor_method("gyro", method_id)
 
     def _on_load_accelerometer_method_params(self, method_id: str) -> None:
         self._on_load_sensor_method_params("acc", method_id)

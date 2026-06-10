@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import traceback
+import copy
 from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
@@ -79,6 +80,10 @@ class LoadedMethodPlugin:
     stream_bindings: dict[str, dict[str, str]] = field(default_factory=dict)
     routing_validation: dict[str, RoutingValidationResult] = field(default_factory=dict)
     routing_warnings: list[str] = field(default_factory=list)
+    default_config: dict[str, Any] = field(default_factory=dict)
+    config_schema: list[dict[str, Any]] = field(default_factory=list)
+    user_config: dict[str, Any] = field(default_factory=dict)
+    config_warnings: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.load_status:
@@ -110,6 +115,7 @@ class LoadedMethodPlugin:
         warnings.extend(self.calibration_warnings)
         warnings.extend(self.params_warnings)
         warnings.extend(self.process_warnings)
+        warnings.extend(self.config_warnings)
         persisted = self.calibration_params
         if isinstance(persisted, dict):
             persisted_warnings = persisted.get("warnings", [])
@@ -194,6 +200,14 @@ class LoadedMethodPlugin:
             )
         )
 
+    def can_edit_config(self) -> bool:
+        return self.module is not None and not self.is_calibrating
+
+    def effective_config(self) -> dict[str, Any]:
+        result = copy.deepcopy(self.default_config)
+        result.update(copy.deepcopy(self.user_config))
+        return result
+
 
 @dataclass
 class CalibrationRunResult:
@@ -242,6 +256,83 @@ def _make_failure(file_path: str, *, last_action: str, error_text: str, tracebac
         warnings=list(warnings or []),
         diagnostics=diagnostics,
     )
+
+
+def _read_default_config(module: ModuleType, warnings: list[str]) -> dict[str, Any]:
+    get_default_config = getattr(module, "get_default_config", None)
+    if not callable(get_default_config):
+        return {}
+    try:
+        config = get_default_config()
+    except Exception as exc:
+        warnings.append(f"get_default_config() failed: {exc}")
+        return {}
+    if config is None:
+        return {}
+    if not isinstance(config, dict):
+        warnings.append(f"get_default_config() returned {type(config).__name__}; dict is expected")
+        return {}
+    try:
+        return copy.deepcopy(config)
+    except Exception:
+        return dict(config)
+
+
+def _schema_entries_from_object(raw_schema: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    if raw_schema is None:
+        return []
+    raw_entries: list[Any]
+    if isinstance(raw_schema, dict):
+        raw_entries = []
+        for key, value in raw_schema.items():
+            if isinstance(value, dict):
+                entry = dict(value)
+                entry.setdefault("key", key)
+            else:
+                entry = {"key": key, "type": value}
+            raw_entries.append(entry)
+    elif isinstance(raw_schema, (list, tuple)):
+        raw_entries = list(raw_schema)
+    else:
+        warnings.append(f"config_schema must be dict or list, got {type(raw_schema).__name__}")
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for index, raw_entry in enumerate(raw_entries):
+        if not isinstance(raw_entry, dict):
+            warnings.append(f"config_schema[{index}] must be dict")
+            continue
+        key = str(raw_entry.get("key") or raw_entry.get("name") or "").strip()
+        if not key:
+            warnings.append(f"config_schema[{index}] is missing key")
+            continue
+        entry = dict(raw_entry)
+        entry["key"] = key
+        field_type = str(entry.get("type", "str")).strip().lower() or "str"
+        aliases = {
+            "number": "float",
+            "double": "float",
+            "integer": "int",
+            "boolean": "bool",
+            "string": "str",
+            "select": "choice",
+            "enum": "choice",
+        }
+        entry["type"] = aliases.get(field_type, field_type)
+        entries.append(entry)
+    return entries
+
+
+def _read_config_schema(module: ModuleType, info: dict[str, Any], warnings: list[str]) -> list[dict[str, Any]]:
+    raw_schema = info.get("config_schema")
+    get_config_schema = getattr(module, "get_config_schema", None)
+    if raw_schema is None and callable(get_config_schema):
+        try:
+            raw_schema = get_config_schema()
+        except Exception as exc:
+            warnings.append(f"get_config_schema() failed: {exc}")
+            return []
+    return _schema_entries_from_object(raw_schema, warnings)
 
 
 def load_method_plugin(path: str) -> LoadedMethodPlugin:
@@ -326,6 +417,9 @@ def load_method_plugin(path: str) -> LoadedMethodPlugin:
             traceback_text=traceback.format_exc(),
         )
 
+    default_config = _read_default_config(module, warnings)
+    config_schema = _read_config_schema(module, info, warnings)
+
     status = "warning" if warnings else "ready"
     return LoadedMethodPlugin(
         method_id="",
@@ -338,6 +432,8 @@ def load_method_plugin(path: str) -> LoadedMethodPlugin:
         warnings=warnings,
         diagnostics=None,
         stream_requirements=stream_requirements,
+        default_config=default_config,
+        config_schema=config_schema,
     )
 
 

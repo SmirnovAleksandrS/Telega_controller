@@ -117,6 +117,7 @@ class MagnetometerTab(ttk.Frame):
         on_select_method: Callable[[str], None] | None = None,
         on_open_method_info: Callable[[str], None] | None = None,
         on_calibrate_method: Callable[[str], None] | None = None,
+        on_configure_method: Callable[[str], None] | None = None,
         on_load_method_params: Callable[[str], None] | None = None,
         on_save_method_params: Callable[[str], None] | None = None,
         on_clear_method_params: Callable[[str], None] | None = None,
@@ -127,6 +128,7 @@ class MagnetometerTab(ttk.Frame):
         on_method_record_change: Callable[[str, bool], None] | None = None,
         on_select_primary_heading: Callable[[str], None] | None = None,
         on_export_metrics: Callable[[], None] | None = None,
+        on_open_extended_analysis: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(master, padding=6)
 
@@ -148,6 +150,7 @@ class MagnetometerTab(ttk.Frame):
         self._on_select_method = on_select_method
         self._on_open_method_info = on_open_method_info
         self._on_calibrate_method = on_calibrate_method
+        self._on_configure_method = on_configure_method
         self._on_load_method_params = on_load_method_params
         self._on_save_method_params = on_save_method_params
         self._on_clear_method_params = on_clear_method_params
@@ -158,6 +161,7 @@ class MagnetometerTab(ttk.Frame):
         self._on_method_record_change = on_method_record_change
         self._on_select_primary_heading = on_select_primary_heading
         self._on_export_metrics = on_export_metrics
+        self._on_open_extended_analysis = on_open_extended_analysis
         self.columnconfigure(0, weight=22)
         self.columnconfigure(1, weight=56)
         self.columnconfigure(2, weight=22)
@@ -557,6 +561,13 @@ class MagnetometerTab(ttk.Frame):
             state="disabled",
         )
         self.selected_method_realtime_off_btn.grid(row=2, column=1, sticky="ew", pady=3)
+        self.selected_method_config_btn = ttk.Button(
+            btns,
+            text="Config",
+            command=self._handle_selected_method_configure,
+            state="disabled",
+        )
+        self.selected_method_config_btn.grid(row=3, column=0, columnspan=2, sticky="ew", pady=3)
         return frm
 
     def _build_output_routing_section(self, parent: tk.Widget) -> ttk.LabelFrame:
@@ -675,8 +686,14 @@ class MagnetometerTab(ttk.Frame):
 
         self.metrics_status_var = tk.StringVar(value="Select a dataset and a method to compute metrics.")
         ttk.Label(topbar, textvariable=self.metrics_status_var).grid(row=0, column=0, sticky="w")
+        self.extended_analysis_btn = ttk.Button(
+            topbar,
+            text="Extended analyze",
+            command=self._handle_open_extended_analysis,
+        )
+        self.extended_analysis_btn.grid(row=0, column=1, sticky="e", padx=(0, 6))
         self.export_metrics_btn = ttk.Button(topbar, text="Export CSV", command=self._handle_export_metrics, state="disabled")
-        self.export_metrics_btn.grid(row=0, column=1, sticky="e")
+        self.export_metrics_btn.grid(row=0, column=2, sticky="e")
 
         columns = ("metric", "value", "units", "status", "notes")
         tree = ttk.Treeview(frm, columns=columns, show="headings", height=8)
@@ -764,6 +781,7 @@ class MagnetometerTab(ttk.Frame):
                     on_select=self._handle_method_selection,
                     on_info=self._handle_open_method_info,
                     on_calibrate=self._handle_method_calibrate,
+                    on_configure=self._handle_method_configure,
                     on_load_params=self._handle_method_load_params,
                     on_save_params=self._handle_method_save_params,
                     on_show_change=self._handle_method_show_change,
@@ -785,6 +803,7 @@ class MagnetometerTab(ttk.Frame):
             card.set_record(bool(state.get("record", False)))
             card.set_record_enabled(bool(state.get("can_record", False)))
             card.set_calibrate_enabled(bool(state.get("can_calibrate", False)))
+            card.set_config_enabled(bool(state.get("can_configure", False)))
             card.set_load_params_enabled(bool(state.get("can_load_params", False)))
             card.set_save_params_enabled(bool(state.get("can_save_params", False)))
             card.set_realtime_state(
@@ -826,8 +845,10 @@ class MagnetometerTab(ttk.Frame):
         can_clear_params: bool,
         can_enable_realtime: bool,
         can_disable_realtime: bool,
+        can_configure: bool = False,
     ) -> None:
         self.selected_method_calibrate_btn.configure(state="normal" if can_calibrate else "disabled")
+        self.selected_method_config_btn.configure(state="normal" if can_configure else "disabled")
         self.selected_method_load_btn.configure(state="normal" if can_load_params else "disabled")
         self.selected_method_save_btn.configure(state="normal" if can_save_params else "disabled")
         self.selected_method_clear_btn.configure(state="normal" if can_clear_params else "disabled")
@@ -1931,10 +1952,19 @@ class MagnetometerTab(ttk.Frame):
         if self._on_calibrate_method is not None:
             self._on_calibrate_method(method_id)
 
+    def _handle_method_configure(self, method_id: str) -> None:
+        if self._on_configure_method is not None:
+            self._on_configure_method(method_id)
+
     def _handle_selected_method_calibrate(self) -> None:
         if self._selected_method_id is None:
             return
         self._handle_method_calibrate(self._selected_method_id)
+
+    def _handle_selected_method_configure(self) -> None:
+        if self._selected_method_id is None:
+            return
+        self._handle_method_configure(self._selected_method_id)
 
     def _handle_method_load_params(self, method_id: str) -> None:
         if self._on_load_method_params is not None:
@@ -2060,6 +2090,10 @@ class MagnetometerTab(ttk.Frame):
     def _handle_export_metrics(self) -> None:
         if self._on_export_metrics is not None:
             self._on_export_metrics()
+
+    def _handle_open_extended_analysis(self) -> None:
+        if self._on_open_extended_analysis is not None:
+            self._on_open_extended_analysis()
 
     def _update_heading_stream_summary(self) -> None:
         visible_names: list[str] = []

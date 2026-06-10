@@ -55,6 +55,13 @@ def get_info() -> dict:
             "heading": "float|None",
             "flags": "str",
         },
+        "config_schema": [
+            {"key": "field_radius", "type": "float", "label": "Field radius", "description": "Target corrected 3D radius. Leave empty to estimate from data."},
+            {"key": "robust", "type": "choice", "label": "Robust fit", "choices": ["irls", "none"]},
+            {"key": "max_iter", "type": "int", "label": "Max IRLS iterations"},
+            {"key": "refine", "type": "bool", "label": "Refine with least squares"},
+            {"key": "expected_noise_std", "type": "float", "label": "Expected noise std", "description": "Optional expected radial noise for reporting. Leave empty when unknown."},
+        ],
     }
 
 

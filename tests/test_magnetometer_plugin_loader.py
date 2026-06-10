@@ -122,6 +122,56 @@ class MagnetometerPluginLoaderTests(unittest.TestCase):
             self.assertEqual(plugin.stream_requirements["calibrate"][0].kind, "imu.magnetometer_vector")
             self.assertEqual(plugin.stream_requirements["process"][0].scope, "process")
 
+    def test_plugin_loads_default_config_and_config_schema(self) -> None:
+        plugin_code = textwrap.dedent(
+            """
+            def get_info():
+                return {
+                    "name": "Configurable Plugin",
+                    "version": "1.0.0",
+                    "type": "method",
+                    "supports_calibrate": True,
+                    "supports_load_params": True,
+                    "supports_save_params": True,
+                    "supports_process": True,
+                    "input_schema": {"mag_x": "float"},
+                    "output_schema": {"mag_x": "float"},
+                    "config_schema": {
+                        "max_iter": {"type": "integer", "label": "Max iterations"},
+                        "robust": {"type": "enum", "choices": ["irls", "none"]},
+                    },
+                }
+
+            def get_default_config():
+                return {"max_iter": 4, "robust": "irls"}
+
+            def calibrate(dataset, config=None):
+                return {"algorithm_name": "Configurable Plugin", "algorithm_version": "1.0.0", "schema_version": "1", "created_at": "2026-04-12T12:00:00Z", "params": dict(config or {})}
+
+            def load_params(path):
+                return {}
+
+            def save_params(path, params):
+                return None
+
+            def process(sample, params):
+                return sample
+            """
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "configurable.py")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(plugin_code)
+
+            plugin = load_method_plugin(path)
+
+        self.assertEqual(plugin.status, "ready")
+        self.assertEqual(plugin.default_config, {"max_iter": 4, "robust": "irls"})
+        self.assertEqual(
+            [(entry["key"], entry["type"]) for entry in plugin.config_schema],
+            [("max_iter", "int"), ("robust", "choice")],
+        )
+
     def test_invalid_stream_requirements_reject_plugin(self) -> None:
         plugin_code = textwrap.dedent(
             """
@@ -1035,6 +1085,186 @@ class MagnetometerPluginLoaderTests(unittest.TestCase):
         self.assertAlmostEqual(result.output["mag_x"] / scale, expected_x, delta=0.002)
         self.assertAlmostEqual(result.output["mag_y"] / scale, expected_y, delta=0.002)
         self.assertAlmostEqual(result.output["heading"], expected_heading, delta=0.1)
+
+    def test_external_papafotis_method_detects_static_segments_and_calibrates(self) -> None:
+        plugin = load_method_plugin("externModules/magnetometer/papafotisMagicalMethod.py")
+        self.assertEqual(plugin.status, "ready")
+        self.assertEqual(plugin.version, "1.0.0")
+        self.assertIn("window_s", {entry["key"] for entry in plugin.config_schema})
+
+        offset = (8.0, -5.0, 3.0)
+        distortion = (
+            (42.0, 4.0, -2.0),
+            (1.5, 36.0, 3.0),
+            (-1.0, 2.0, 48.0),
+        )
+        golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+        records: list[SampleRecord] = []
+        mag_records: list[dict[str, object]] = []
+        accel_records: list[dict[str, object]] = []
+        gyro_records: list[dict[str, object]] = []
+        static_check_records: list[SampleRecord] = []
+
+        def distorted(unit: tuple[float, float, float]) -> tuple[float, float, float]:
+            return (
+                offset[0] + sum(distortion[0][axis] * unit[axis] for axis in range(3)),
+                offset[1] + sum(distortion[1][axis] * unit[axis] for axis in range(3)),
+                offset[2] + sum(distortion[2][axis] * unit[axis] for axis in range(3)),
+            )
+
+        def append_sample(
+            timestamp: int,
+            mag: tuple[float, float, float],
+            acc: tuple[float, float, float],
+            gyro: tuple[float, float, float],
+        ) -> SampleRecord:
+            record = SampleRecord(
+                stream_id="raw_magnetometer",
+                stream_type="raw",
+                producer_name="Raw Magnetometer",
+                producer_version="builtin",
+                timestamp_mcu=timestamp,
+                timestamp_pc_rx=timestamp + 1,
+                timestamp_pc_est=timestamp,
+                mag_x=mag[0],
+                mag_y=mag[1],
+                mag_z=mag[2],
+                heading=None,
+                flags="",
+            )
+            records.append(record)
+            mag_records.append(
+                {
+                    "timestamp_mcu": timestamp,
+                    "timestamp_pc_rx": timestamp + 1,
+                    "timestamp_pc_est": timestamp,
+                    "mag_x": mag[0],
+                    "mag_y": mag[1],
+                    "mag_z": mag[2],
+                    "flags": "",
+                }
+            )
+            accel_records.append(
+                {
+                    "timestamp_mcu": timestamp,
+                    "timestamp_pc_rx": timestamp + 1,
+                    "timestamp_pc_est": timestamp,
+                    "acc_x": acc[0],
+                    "acc_y": acc[1],
+                    "acc_z": acc[2],
+                    "flags": "",
+                }
+            )
+            gyro_records.append(
+                {
+                    "timestamp_mcu": timestamp,
+                    "timestamp_pc_rx": timestamp + 1,
+                    "timestamp_pc_est": timestamp,
+                    "gyro_x": gyro[0],
+                    "gyro_y": gyro[1],
+                    "gyro_z": gyro[2],
+                    "flags": "",
+                }
+            )
+            return record
+
+        sample_index = 0
+        previous_raw: tuple[float, float, float] | None = None
+        for orientation_index in range(18):
+            z_unit = 1.0 - 2.0 * (orientation_index + 0.5) / 18.0
+            xy_radius = math.sqrt(max(0.0, 1.0 - z_unit * z_unit))
+            angle = orientation_index * golden_angle
+            unit = (xy_radius * math.cos(angle), xy_radius * math.sin(angle), z_unit)
+            raw = distorted(unit)
+
+            if previous_raw is not None:
+                for transition_index in range(16):
+                    alpha = float(transition_index + 1) / 17.0
+                    mag = tuple((1.0 - alpha) * previous_raw[axis] + alpha * raw[axis] for axis in range(3))
+                    append_sample(sample_index * 20, mag, (0.2 * alpha, 0.1, 0.98), (8.0, 1.0, 0.5))
+                    sample_index += 1
+
+            static_mid_record: SampleRecord | None = None
+            for static_index in range(60):
+                noise = (
+                    0.002 * math.sin(static_index * 0.7 + orientation_index),
+                    0.002 * math.cos(static_index * 0.5),
+                    0.002 * math.sin(static_index * 0.3),
+                )
+                mag = tuple(raw[axis] + noise[axis] for axis in range(3))
+                acc = (
+                    0.4 * unit[0] + 0.0005 * math.sin(static_index),
+                    0.4 * unit[1] + 0.0005 * math.cos(static_index),
+                    1.0 + 0.1 * unit[2],
+                )
+                record = append_sample(sample_index * 20, mag, acc, (0.02, 0.01, 0.01))
+                if static_index == 30:
+                    static_mid_record = record
+                sample_index += 1
+
+            assert static_mid_record is not None
+            static_check_records.append(static_mid_record)
+            previous_raw = raw
+
+        dataset = Dataset("papafotis_synthetic_static", records=records)
+        config = {
+            "stream_inputs": {
+                "mag_input": {"records": mag_records},
+                "accel_input": {"records": accel_records},
+                "gyro_input": {"records": gyro_records},
+            },
+            "window_s": 0.4,
+            "step_s": 0.1,
+            "min_segment_s": 0.7,
+            "merge_gap_s": 0.05,
+            "trim_edge_s": 0.05,
+            "mag_norm_std_threshold": 0.08,
+            "mag_axis_std_threshold": 0.08,
+            "acc_norm_std_threshold": 0.01,
+            "acc_axis_std_threshold": 0.01,
+            "gyro_rms_threshold": 1.0,
+            "max_sync_delta_ms": 5.0,
+            "min_static_segments": 12,
+            "duplicate_angle_deg": 3.0,
+            "max_iter": 100,
+        }
+
+        calibration = run_method_calibration(plugin, dataset, config=config)
+
+        self.assertTrue(calibration.ok)
+        assert calibration.params is not None
+        self.assertIn("Papafotis MAG.I.C.AL.", calibration.report)
+        self.assertIn("Detected static segments: 18", calibration.report)
+        params = calibration.params["params"]
+        self.assertEqual(params["used_point_count"], 18)
+        self.assertEqual(params["coverage_quality"], "good_3d")
+        self.assertTrue(params["accel_used"])
+        self.assertTrue(params["gyro_used"])
+        self.assertLess(params["rms_residual"], 1e-4)
+
+        for record in static_check_records:
+            result = run_method_process(
+                plugin,
+                {
+                    "timestamp_mcu": record.timestamp_mcu,
+                    "timestamp_pc_rx": record.timestamp_pc_rx,
+                    "timestamp_pc_est": record.timestamp_pc_est,
+                    "mag_x": record.mag_x,
+                    "mag_y": record.mag_y,
+                    "mag_z": record.mag_z,
+                    "heading": record.heading,
+                    "flags": record.flags,
+                },
+                calibration.params,
+            )
+            self.assertTrue(result.ok)
+            assert result.output is not None
+            corrected_radius = math.sqrt(
+                result.output["mag_x"] * result.output["mag_x"]
+                + result.output["mag_y"] * result.output["mag_y"]
+                + result.output["mag_z"] * result.output["mag_z"]
+            )
+            self.assertAlmostEqual(corrected_radius, 1.0, delta=0.002)
 
     def test_heading_hill_timestamp_pitch_index_matches_linear_lookup(self) -> None:
         from externModules.magnetometer import headingHillMethod as method
